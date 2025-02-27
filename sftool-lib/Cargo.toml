@@ -1,0 +1,11 @@
+[package]
+name = "sftool-lib"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+probe-rs = { git = "https://github.com/OpenSiFli/probe-rs.git", branch = "dev" }
+serialport = "4.7.0"
