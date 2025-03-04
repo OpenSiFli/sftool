@@ -9,3 +9,8 @@ path = "src/lib.rs"
 [dependencies]
 probe-rs = { git = "https://github.com/OpenSiFli/probe-rs.git", branch = "dev" }
 serialport = "4.7.0"
+rust-embed = { version = "8.6.0", features = ["debug-embed", "compression"] }
+strum = {version = "0.27.1",features = ["derive"]}
+phf = { version = "0.11", features = ["macros"] }
+log = "0.4.26"
+tracing = "0.1.41"

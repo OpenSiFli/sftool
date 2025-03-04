@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 clap = { version = "4.5.31", features = ["derive"] }
 sftool-lib = { path = "../sftool-lib" }
+strum = {version = "0.27.1",features = ["derive"]}

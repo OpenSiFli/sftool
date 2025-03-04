@@ -1,10 +1,23 @@
-use std::path::PathBuf;
 use clap::{Parser, Subcommand, ValueEnum};
+use sftool_lib::SifliTool;
+use std::path::PathBuf;
+use strum::{Display, EnumString};
+use sftool_lib::write_flash::WriteFlashTrait;
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(EnumString, Display, Debug, Clone, ValueEnum)]
 enum Chip {
     #[clap(name = "SF32LB52")]
     SF32LB52,
+}
+
+#[derive(EnumString, Display, Debug, Clone, ValueEnum)]
+enum Memory {
+    #[clap(name = "nor")]
+    Nor,
+    #[clap(name = "nand")]
+    Nand,
+    #[clap(name = "sd")]
+    Sd,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -20,12 +33,16 @@ struct Cli {
     #[arg(short = 'c', long = "chip", value_enum)]
     chip: Chip,
 
+    /// Memory type
+    #[arg(short = 'm', long = "memory", value_enum, default_value = "nor")]
+    memory: Memory,
+
     /// Serial port device
     #[arg(short = 'p', long = "port")]
     port: String,
 
     /// Serial port baud rate used when flashing/reading
-    #[arg(short = 'b', long = "baud")]
+    #[arg(short = 'b', long = "baud", default_value = "1000000")]
     baud: u32,
 
     /// What to do before connecting to the chip
@@ -73,4 +90,10 @@ struct WriteFlash {
 
 fn main() {
     let args = Cli::parse();
+    let mut siflitool = SifliTool::new(
+        args.port.to_string().as_str(),
+        args.chip.to_string().to_lowercase().as_str(),
+        args.memory.to_string().to_lowercase().as_str(),
+    );
+    siflitool.write_flash();
 }
