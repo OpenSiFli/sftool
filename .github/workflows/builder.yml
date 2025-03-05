@@ -74,7 +74,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sftool-x86_64-unknown-linux-gnu
-          path: target/${{ matrix.target }}/release/heaven
+          path: target/${{ matrix.target }}/release/sftool
 
       - name: Upload artifact (x86_64-apple-darwin)
         if: matrix.target == 'x86_64-apple-darwin4'
