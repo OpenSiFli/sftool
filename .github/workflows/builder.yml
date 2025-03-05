@@ -77,7 +77,7 @@ jobs:
           path: target/${{ matrix.target }}/release/sftool
 
       - name: Upload artifact (x86_64-apple-darwin)
-        if: matrix.target == 'x86_64-apple-darwin4'
+        if: matrix.target == 'x86_64-apple-darwin'
         uses: actions/upload-artifact@v4
         with:
           name: sftool-x86_64-apple-darwin
