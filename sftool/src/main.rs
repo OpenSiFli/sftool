@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use sftool_lib::SifliTool;
+use sftool_lib::{SifliTool, SifliToolBase, WriteFlashParams};
 use std::path::PathBuf;
 use strum::{Display, EnumString};
 use sftool_lib::write_flash::WriteFlashTrait;
@@ -91,9 +91,28 @@ struct WriteFlash {
 fn main() {
     let args = Cli::parse();
     let mut siflitool = SifliTool::new(
-        args.port.to_string().as_str(),
-        args.chip.to_string().to_lowercase().as_str(),
-        args.memory.to_string().to_lowercase().as_str(),
+        SifliToolBase {
+            port_name: args.port.clone(),
+            chip: args.chip.to_string().to_lowercase(),
+            memory_type: args.memory.to_string().to_lowercase(),
+            quiet: false,
+        },
+        if let Some(Commands::WriteFlash(ref write_flash)) = args.command {
+            Some(WriteFlashParams {
+                file_path: write_flash.files.clone(),
+                verify: write_flash.verify,
+                no_compress: write_flash.no_compress,
+                erase_all: write_flash.erase_all,
+            })
+        } else {
+            None
+        },
     );
-    siflitool.write_flash();
+    let res = match args.command { 
+        Some(Commands::WriteFlash(_)) => siflitool.write_flash(),
+        None => Ok(()),
+    };
+    if let Err(e) = res {
+        eprintln!("Error: {:?}", e);
+    }
 }

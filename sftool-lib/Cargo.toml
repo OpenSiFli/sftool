@@ -14,3 +14,11 @@ strum = {version = "0.27.1",features = ["derive"]}
 phf = { version = "0.11", features = ["macros"] }
 log = "0.4.26"
 tracing = "0.1.41"
+ihex = "3.0"
+elf = "0.7.4"
+goblin = "0.9.3"
+memmap2 = "0.9.5"
+crc32fast = "1.3"
+tempfile = "3.17.1"
+indicatif = "0.17.11"
+console = "0.15.11"

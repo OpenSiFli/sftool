@@ -1,7 +1,9 @@
+mod ram_command;
 mod ram_stub;
 pub mod write_flash;
 
-use std::io::Read;
+use console::Term;
+use indicatif::{ProgressBar, ProgressStyle};
 use probe_rs::architecture::arm::core::registers::cortex_m::{PC, SP};
 use probe_rs::architecture::arm::sequences::ArmDebugSequence;
 use probe_rs::probe::list::Lister;
@@ -9,37 +11,70 @@ use probe_rs::{MemoryInterface, Permissions, RegisterId, RegisterRole};
 use ram_stub::CHIP_FILE_NAME;
 use serialport;
 use serialport::SerialPort;
+use std::io::{Read, Write};
 use std::time::Duration;
+
+#[derive(Clone)]
+pub struct SifliToolBase {
+    pub port_name: String,
+    pub chip: String,
+    pub memory_type: String,
+    pub quiet: bool,
+}
+
+#[derive(Clone)]
+pub struct WriteFlashParams {
+    pub file_path: Vec<String>,
+    pub verify: bool,
+    pub no_compress: bool,
+    pub erase_all: bool,
+}
 
 pub struct SifliTool {
     port: Box<dyn SerialPort>,
-    chip: String,
-    memory_type: String,
+    base: SifliToolBase,
+    write_flash_params: Option<WriteFlashParams>,
 }
 
 impl SifliTool {
-    pub fn new(port_name: &str, chip: &str, memory_type: &str) -> Self {
-        Self::download_stub(port_name, chip, memory_type).unwrap();
-        // 打印现在时间，精确到ms
-        let now = std::time::SystemTime::now();
-        let now = now.duration_since(std::time::UNIX_EPOCH).unwrap();
-        println!("now: {:?}", now.as_millis());
-        let mut port = serialport::new(port_name, 1000000)
-            .timeout(Duration::from_secs(1))
+    pub fn new(base_param: SifliToolBase, write_flash_params: Option<WriteFlashParams>) -> Self {
+        Self::download_stub(
+            &base_param.port_name,
+            &base_param.chip,
+            &base_param.memory_type,
+            base_param.quiet,
+        )
+        .unwrap();
+        let mut port = serialport::new(&base_param.port_name, 1000000)
+            .timeout(Duration::from_secs(5))
             .open()
             .unwrap();
-        // 清空接收缓冲区
+        port.write_all("\r\n".as_bytes()).unwrap();
+        port.flush().unwrap();
         port.clear(serialport::ClearBuffer::All).unwrap();
+
         Self {
             port,
-            chip: chip.to_string(),
-            memory_type: memory_type.to_string(),
+            base: base_param,
+            write_flash_params,
         }
     }
 
-    fn download_stub(port_name: &str, chip: &str, memory_type: &str) -> Result<(), std::io::Error> {
-        let lister = Lister::new();
+    fn download_stub(
+        port_name: &str,
+        chip: &str,
+        memory_type: &str,
+        quiet: bool,
+    ) -> Result<(), std::io::Error> {
+        let spinner = ProgressBar::new_spinner();
+        if !quiet {
+            spinner.enable_steady_tick(Duration::from_millis(100));
+            spinner.set_style(ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap());
+            spinner.set_prefix("0x00");
+            spinner.set_message("Connecting to chip...");
+        }
 
+        let lister = Lister::new();
         let probes = lister.list_all();
 
         let index = probes.iter().enumerate().find_map(|(index, probe)| {
@@ -51,7 +86,6 @@ impl SifliTool {
                 }
             })
         });
-        println!("{:?}", index);
         let Some(index) = index else {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
@@ -61,20 +95,16 @@ impl SifliTool {
         let probe = probes[index]
             .open()
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        println!("probe");
 
         let mut session = probe
             .attach(chip, Permissions::default())
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        println!("session");
         let mut core = session
             .core(0)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        println!("core");
 
         core.reset_and_halt(std::time::Duration::from_secs(5))
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        println!("reset");
 
         // Download the stub
         let stub = ram_stub::RamStubFile::get(
@@ -92,7 +122,7 @@ impl SifliTool {
         let mut addr = 0x2005_A000;
         let mut data = &stub.data[..];
         while !data.is_empty() {
-            let chunk = &data[..std::cmp::min(data.len(), 64*1024)];
+            let chunk = &data[..std::cmp::min(data.len(), 64 * 1024)];
             core.write_8(addr, chunk)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             addr += chunk.len() as u64;
@@ -116,15 +146,14 @@ impl SifliTool {
         // set PC
         core.write_core_reg(PC.id, pc)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        
+
         core.run()
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         std::thread::sleep(Duration::from_millis(500));
-        
-        // 打印现在时间，精确到ms
-        let now = std::time::SystemTime::now();
-        let now = now.duration_since(std::time::UNIX_EPOCH).unwrap();
-        println!("now: {:?}", now.as_millis());
+
+        if !quiet {
+            spinner.finish_with_message("Connected success!");
+        }
         Ok(())
     }
 }
