@@ -1,0 +1,119 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Builder
+
+# Controls when the workflow will run
+on: [push, fork, workflow_dispatch]
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        build: [linux, macos, windows, macos-intel, linux-aarch64]#, linux-armhf, linux-arm]
+        include:
+          - build: linux
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            cmd: cargo
+          - build: macos
+            os: macos-latest
+            target: aarch64-apple-darwin
+            cmd: cargo
+          - build: windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            cmd: cargo
+          - build: macos-intel
+            os: macos-13
+            target: x86_64-apple-darwin
+            cmd: cargo
+          - build: linux-aarch64
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            cmd: cross
+#          - build: linux-armhf
+#            os: ubuntu-latest
+#            target: arm-unknown-linux-gnueabihf
+#            cmd: cross
+#          - build: linux-arm
+#            os: ubuntu-latest
+#            target: arm-unknown-linux-gnueabi
+#            cmd: cross
+      fail-fast: false
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Prepare env
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          profile: minimal
+          override: true
+      
+      - name: Prepare deps on Linux amd64
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: "sudo apt-get update && sudo apt-get install --assume-yes && sudo apt-get install -y pkg-config libudev-dev"
+
+      - name: Prepare cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build 
+        run: ${{ matrix.cmd }} build --release --target ${{ matrix.target }}
+
+      - name: Upload artifact (x86_64-unknown-linux-gnu)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sftool-x86_64-unknown-linux-gnu
+          path: target/${{ matrix.target }}/release/heaven
+
+      - name: Upload artifact (x86_64-apple-darwin)
+        if: matrix.target == 'x86_64-apple-darwin4'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sftool-x86_64-apple-darwin
+          path: target/${{ matrix.target }}/release/sftool
+          
+      - name: Upload artifact (x86_64-pc-windows-msvc)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sftool-x86_64-pc-windows-msvc
+          path: target/${{ matrix.target }}/release/sftool.exe
+          
+      - name: Upload artifact (aarch64-unknown-linux-gnu)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sftool-aarch64-unknown-linux-gnu
+          path: target/${{ matrix.target }}/release/sftool
+          
+      - name: Upload artifact (arm-unknown-linux-gnueabihf)
+        if: matrix.target == 'arm-unknown-linux-gnueabihf'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sftool-arm-unknown-linux-gnueabihf
+          path: target/${{ matrix.target }}/release/sftool
+
+      - name: Upload artifact (arm-unknown-linux-gnueabi)
+        if: matrix.target == 'arm-unknown-linux-gnueabi'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sftool-arm-unknown-linux-gnueabi
+          path: target/${{ matrix.target }}/release/sftool
+          
+      - name: Upload artifact (aarch64-apple-darwin)
+        if: matrix.target == 'aarch64-apple-darwin'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sftool-aarch64-apple-darwin
+          path: target/${{ matrix.target }}/release/sftool
