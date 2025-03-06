@@ -1812,6 +1812,7 @@ dependencies = [
  "goblin",
  "ihex",
  "indicatif",
+ "lazy_static",
  "log",
  "memmap2",
  "phf",

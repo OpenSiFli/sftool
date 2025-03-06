@@ -1,8 +1,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use sftool_lib::{SifliTool, SifliToolBase, WriteFlashParams};
-use std::path::PathBuf;
-use strum::{Display, EnumString};
 use sftool_lib::write_flash::WriteFlashTrait;
+use sftool_lib::{SifliTool, SifliToolBase, WriteFlashParams};
+use strum::{Display, EnumString};
 
 #[derive(EnumString, Display, Debug, Clone, ValueEnum)]
 enum Chip {

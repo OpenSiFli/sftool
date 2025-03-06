@@ -2,8 +2,11 @@ use crate::SifliTool;
 use crate::ram_command::{Command, RamCommand, Response};
 use crc::Algorithm;
 use indicatif::{ProgressBar, ProgressStyle};
+use lazy_static::lazy_static;
 use memmap2::Mmap;
+use phf::phf_map;
 use std::cmp::PartialEq;
+use std::collections::HashMap;
 use std::fmt::format;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
@@ -158,7 +161,7 @@ fn get_file_crc32(file: &File) -> Result<u32, std::io::Error> {
 
     let mut digest = CRC.digest();
 
-    let mut buffer = [0u8; 4096];
+    let mut buffer = [0u8; 4 * 1024 * 1024];
     loop {
         let n = reader.read(&mut buffer)?;
         if n == 0 {
@@ -168,7 +171,47 @@ fn get_file_crc32(file: &File) -> Result<u32, std::io::Error> {
     }
 
     let checksum = digest.finalize();
+    reader.seek(SeekFrom::Start(0))?;
     Ok(checksum)
+}
+
+lazy_static! {
+    static ref CHIP_MEMORY_LAYOUT: HashMap<&'static str, Vec<u32>> = {
+        let mut m = HashMap::new();
+        m.insert("sf32lb52", vec![0x10000000, 0x12000000]);
+        m
+    };
+}
+
+impl SifliTool {
+    fn erase_all(
+        &mut self,
+        write_flash_files: &[WriteFlashFile],
+        mut step: i32,
+    ) -> Result<(), std::io::Error> {
+        let spinner = ProgressBar::new_spinner();
+        if !self.base.quiet {
+            spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+            spinner.set_style(ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap());
+            spinner.set_prefix(format!("0x{:02X}", step));
+            spinner.set_message("Erasing all flash regions...");
+            step += 1;
+        }
+        let mut erase_address: Vec<u32> = Vec::new();
+        for f in write_flash_files.iter() {
+            let address = f.address & 0xFF00_0000;
+            // 如果ERASE_ADDRESS中的地址已经被擦除过，则跳过
+            if erase_address.contains(&address) {
+                continue;
+            }
+            self.command(Command::EraseAll { address: f.address })?;
+            erase_address.push(address);
+        }
+        if !self.base.quiet {
+            spinner.finish_with_message("All flash regions erased");
+        }
+        Ok(())
+    }
 }
 
 impl WriteFlashTrait for SifliTool {
@@ -186,13 +229,13 @@ impl WriteFlashTrait for SifliTool {
 
         for file in params.file_path.iter() {
             // file@address
-            let mut parts: Vec<_> = file.split('@').collect();
+            let parts: Vec<_> = file.split('@').collect();
             // 如果存在@符号，则证明是bin文件
             if parts.len() == 2 {
                 let addr = str_to_u32(parts[1])
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
                 let file = File::open(parts[0])?;
-                let crc32 = get_file_crc32(&file)?;
+                let crc32 = get_file_crc32(&file.try_clone()?)?;
                 write_flash_files.push(WriteFlashFile {
                     address: addr,
                     file,
@@ -226,21 +269,7 @@ impl WriteFlashTrait for SifliTool {
         }
 
         if params.erase_all {
-            let spinner = ProgressBar::new_spinner();
-            if !self.base.quiet {
-                spinner.enable_steady_tick(std::time::Duration::from_millis(100));
-                spinner
-                    .set_style(ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap());
-                spinner.set_prefix(format!("0x{:02X}", step));
-                spinner.set_message("Erasing all flash regions...");
-                step += 1;
-            }
-            for f in write_flash_files.iter() {
-                self.command(Command::EraseAll { address: f.address })?;
-            }
-            if !self.base.quiet {
-                spinner.finish_with_message("All flash regions erased");
-            }
+            self.erase_all(&write_flash_files, step)?;
         }
 
         for file in write_flash_files.iter() {
@@ -275,7 +304,7 @@ impl WriteFlashTrait for SifliTool {
                     if !self.base.quiet {
                         re_download_spinner.finish_with_message("No need to re-download, skip!");
                     }
-                    return Ok(());
+                    continue;
                 }
                 if !self.base.quiet {
                     re_download_spinner.finish_with_message("Need to re-download");
