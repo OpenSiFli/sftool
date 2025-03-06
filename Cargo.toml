@@ -1,7 +1,12 @@
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-
+license = "Apache-2.0"
+description = "SiFli SoC serial utility"
+homepage = "https://github.com/OpenSiFli/sftool"
+documentation = "https://docs.rs/sftool"
+repository = "https://github.com/OpenSiFli/sftool"
+readme = "README.md"
 
 [workspace]
 members = [
