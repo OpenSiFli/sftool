@@ -1,9 +1,10 @@
+use std::cmp::PartialEq;
 use crate::SifliTool;
 use std::io::{Error, Write};
 use std::str::FromStr;
 use strum::{Display, EnumString};
 
-#[derive(EnumString, Display, Debug, Clone)]
+#[derive(EnumString, Display, Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     #[strum(to_string = "burn_erase_all 0x{address:08x}\r")]
     EraseAll { address: u32 },
@@ -35,19 +36,25 @@ pub trait RamCommand {
     fn send_data(&mut self, data: &[u8]) -> Result<Response, std::io::Error>;
 }
 
-const TIMEOUT: u128 = 6000; //ms
+const TIMEOUT: u128 = 4000; //ms
+
 
 impl RamCommand for SifliTool {
     fn command(&mut self, cmd: Command) -> Result<Response, std::io::Error> {
         self.port.write_all(cmd.to_string().as_bytes())?;
         self.port.flush()?;
         self.port.clear(serialport::ClearBuffer::All)?;
+        
+        let timeout = match cmd { 
+            Command::EraseAll { .. } => 10 * 1000,
+            _ => TIMEOUT,
+        };
 
         let mut buffer = Vec::new();
         let now = std::time::SystemTime::now();
         loop {
             let elapsed = now.elapsed().unwrap().as_millis();
-            if elapsed > TIMEOUT {
+            if elapsed > timeout {
                 return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timeout"));
             }
 
