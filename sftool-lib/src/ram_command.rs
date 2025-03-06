@@ -17,6 +17,9 @@ pub enum Command {
 
     #[strum(to_string = "burn_write 0x{address:08x} 0x{len:08x}\r")]
     Write { address: u32, len: u32 },
+    
+    #[strum(to_string = "burn_reset\r")]
+    SoftReset,
 }
 
 #[derive(EnumString, Display, Debug, Clone, PartialEq, Eq)]
@@ -46,7 +49,7 @@ impl RamCommand for SifliTool {
         self.port.clear(serialport::ClearBuffer::All)?;
         
         let timeout = match cmd { 
-            Command::EraseAll { .. } => 20 * 1000,
+            Command::EraseAll { .. } => 30 * 1000,
             _ => TIMEOUT,
         };
 

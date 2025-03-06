@@ -1,3 +1,4 @@
+use sftool_lib::reset::Reset;
 use clap::{Parser, Subcommand, ValueEnum};
 use sftool_lib::write_flash::WriteFlashTrait;
 use sftool_lib::{SifliTool, SifliToolBase, WriteFlashParams};
@@ -19,10 +20,12 @@ enum Memory {
     Sd,
 }
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, ValueEnum, PartialEq, Eq)]
 enum Operation {
-    #[clap(name = "none")]
+    #[clap(name = "no_reset")]
     None,
+    #[clap(name = "soft_reset")]
+    SoftReset,
 }
 
 #[derive(Parser, Debug)]
@@ -45,11 +48,11 @@ struct Cli {
     baud: u32,
 
     /// What to do before connecting to the chip
-    #[arg(long = "before", value_enum, default_value = "none")]
+    #[arg(long = "before", value_enum, default_value = "no_reset")]
     before: Operation,
 
     /// What to do after siflitool is finished
-    #[arg(long = "after", value_enum, default_value = "none")]
+    #[arg(long = "after", value_enum, default_value = "soft_reset")]
     after: Operation,
 
     /// Number of attempts to connect, negative or 0 for infinite. Default: 7.
@@ -113,5 +116,9 @@ fn main() {
     };
     if let Err(e) = res {
         eprintln!("Error: {:?}", e);
+    }
+    
+    if args.after != Operation::None {
+        siflitool.soft_reset().unwrap();
     }
 }

@@ -1,6 +1,7 @@
 mod ram_command;
 mod ram_stub;
 pub mod write_flash;
+pub mod reset;
 
 use console::Term;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -47,7 +48,6 @@ pub struct SifliTool {
 
 impl SifliTool {
     pub fn new(base_param: SifliToolBase, write_flash_params: Option<WriteFlashParams>) -> Self {
-        let now = std::time::SystemTime::now();
         Self::download_stub(
             &base_param.port_name,
             &base_param.chip,
@@ -55,7 +55,6 @@ impl SifliTool {
             base_param.quiet,
         )
         .unwrap();
-        println!("Time elapsed: {:?}", now.elapsed().unwrap());
         let mut port = serialport::new(&base_param.port_name, 1000000)
             .timeout(Duration::from_secs(5))
             .open()
