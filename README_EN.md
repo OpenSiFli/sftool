@@ -19,6 +19,12 @@ SFTool is an open-source tool specifically designed for SiFli series SoCs (Syste
 
 ## Installation
 
+### Install with Cargo
+
+```bash
+cargo install --git https://github.com/OpenSiFli/sftool
+```
+
 ### Compile from Source
 
 ```bash
@@ -31,12 +37,6 @@ cargo build --release
 
 # The compiled binary will be at
 # ./target/release/sftool
-```
-
-### Install from Crates.io
-
-```bash
-cargo install sftool
 ```
 
 ## Usage
