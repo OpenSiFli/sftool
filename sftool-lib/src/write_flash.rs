@@ -1,6 +1,6 @@
 use crate::SifliTool;
 use crate::ram_command::{Command, RamCommand, Response};
-use crc32fast::Hasher;
+use crc::Algorithm;
 use indicatif::{ProgressBar, ProgressStyle};
 use memmap2::Mmap;
 use std::cmp::PartialEq;
@@ -142,19 +142,32 @@ fn elf_to_bin(elf_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
 }
 
 fn get_file_crc32(file: &File) -> Result<u32, std::io::Error> {
+    const CRC_32_ALGO: Algorithm<u32> = Algorithm {
+        width: 32,
+        poly: 0x04C11DB7,
+        init: 0,
+        refin: true,
+        refout: true,
+        xorout: 0,
+        check: 0x2DFD2D88,
+        residue: 0,
+    };
+
+    const CRC: crc::Crc<u32> = crc::Crc::<u32>::new(&CRC_32_ALGO);
     let mut reader = BufReader::new(file);
-    let mut hasher = Hasher::new();
-    let mut buffer = [0u8; 4 * 1024 * 1024];
+
+    let mut digest = CRC.digest();
+
+    let mut buffer = [0u8; 4096];
     loop {
-        let bytes_read = reader.read(&mut buffer)?;
-        if bytes_read == 0 {
+        let n = reader.read(&mut buffer)?;
+        if n == 0 {
             break;
         }
-        hasher.update(&buffer[..bytes_read]);
+        digest.update(&buffer[..n]);
     }
 
-    let checksum = hasher.finalize();
-    reader.seek(SeekFrom::Start(0))?;
+    let checksum = digest.finalize();
     Ok(checksum)
 }
 
