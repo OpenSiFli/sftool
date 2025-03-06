@@ -46,7 +46,7 @@ impl RamCommand for SifliTool {
         self.port.clear(serialport::ClearBuffer::All)?;
         
         let timeout = match cmd { 
-            Command::EraseAll { .. } => 10 * 1000,
+            Command::EraseAll { .. } => 20 * 1000,
             _ => TIMEOUT,
         };
 

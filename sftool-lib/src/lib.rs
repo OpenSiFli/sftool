@@ -4,10 +4,19 @@ pub mod write_flash;
 
 use console::Term;
 use indicatif::{ProgressBar, ProgressStyle};
+use probe_rs::architecture::arm::FullyQualifiedApAddress;
+use probe_rs::architecture::arm::armv8m::Dhcsr;
 use probe_rs::architecture::arm::core::registers::cortex_m::{PC, SP};
+use probe_rs::architecture::arm::dp::DpAddress;
 use probe_rs::architecture::arm::sequences::ArmDebugSequence;
+use probe_rs::config::Chip;
+use probe_rs::config::DebugSequence::Arm;
 use probe_rs::probe::list::Lister;
-use probe_rs::{MemoryInterface, Permissions, RegisterId, RegisterRole};
+use probe_rs::probe::sifliuart::SifliUart;
+use probe_rs::probe::{DebugProbe, DebugProbeError, ProbeCreationError};
+use probe_rs::vendor::Vendor;
+use probe_rs::vendor::sifli::Sifli;
+use probe_rs::{MemoryInterface, MemoryMappedRegister, Permissions, RegisterId, RegisterRole};
 use ram_stub::CHIP_FILE_NAME;
 use serialport;
 use serialport::SerialPort;
@@ -38,6 +47,7 @@ pub struct SifliTool {
 
 impl SifliTool {
     pub fn new(base_param: SifliToolBase, write_flash_params: Option<WriteFlashParams>) -> Self {
+        let now = std::time::SystemTime::now();
         Self::download_stub(
             &base_param.port_name,
             &base_param.chip,
@@ -45,10 +55,13 @@ impl SifliTool {
             base_param.quiet,
         )
         .unwrap();
+        println!("Time elapsed: {:?}", now.elapsed().unwrap());
         let mut port = serialport::new(&base_param.port_name, 1000000)
             .timeout(Duration::from_secs(5))
             .open()
             .unwrap();
+        // Self::run(&port).unwrap();
+        // std::thread::sleep(Duration::from_millis(500));
         port.write_all("\r\n".as_bytes()).unwrap();
         port.flush().unwrap();
         port.clear(serialport::ClearBuffer::All).unwrap();
@@ -58,6 +71,69 @@ impl SifliTool {
             base: base_param,
             write_flash_params,
         }
+    }
+
+    fn run(serial: &Box<dyn SerialPort>) -> Result<(), std::io::Error> {
+        let reader = serial.try_clone()?;
+        let writer = reader.try_clone()?;
+        let ser = serial.try_clone()?;
+        let mut debug = SifliUart::new(Box::new(reader), Box::new(writer), ser).unwrap();
+        debug.attach().unwrap();
+
+        let mut interface = Box::new(debug)
+            .try_get_arm_interface()
+            .unwrap()
+            .initialize(
+                match (Sifli {}
+                    .try_create_debug_sequence(&Chip {
+                        name: "SF32LB52".to_string(),
+                        part: None,
+                        svd: None,
+                        documentation: Default::default(),
+                        package_variants: Default::default(),
+                        cores: Default::default(),
+                        memory_map: Default::default(),
+                        flash_algorithms: Default::default(),
+                        rtt_scan_ranges: Default::default(),
+                        jtag: Default::default(),
+                        default_binary_format: Default::default(),
+                    })
+                    .unwrap())
+                {
+                    Arm(arm) => arm,
+                    _ => panic!("Invalid sequence"),
+                },
+                DpAddress::Default,
+            )
+            .unwrap();
+        let mut interface = interface
+            .memory_interface(&FullyQualifiedApAddress::v1_with_dp(DpAddress::Default, 0))
+            .unwrap();
+        let mut value = Dhcsr(0);
+        // Leave halted state.
+        // Step one instruction.
+        value.set_c_step(true);
+        value.set_c_halt(false);
+        value.set_c_debugen(true);
+        value.set_c_maskints(true);
+        value.enable_write();
+
+        interface
+            .write_word_32(Dhcsr::get_mmio_address(), value.into())
+            .unwrap();
+        interface.flush().unwrap();
+
+        let mut value = Dhcsr(0);
+        value.set_c_halt(false);
+        value.set_c_debugen(true);
+        value.enable_write();
+
+        interface
+            .write_word_32(Dhcsr::get_mmio_address(), value.into())
+            .unwrap();
+        interface.flush().unwrap();
+
+        Ok(())
     }
 
     fn download_stub(

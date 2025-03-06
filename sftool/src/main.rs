@@ -107,7 +107,7 @@ fn main() {
             None
         },
     );
-    let res = match args.command { 
+    let res = match args.command {
         Some(Commands::WriteFlash(_)) => siflitool.write_flash(),
         None => Ok(()),
     };
