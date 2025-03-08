@@ -13,16 +13,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        build: [linux-armhf, linux-arm]
+        build: [linux-arm]#, linux-armhf]
         include:
-          - build: linux-armhf
-            os: ubuntu-latest
-            target: arm-unknown-linux-gnueabihf
-            cmd: cross
           - build: linux-arm
             os: ubuntu-latest
             target: arm-unknown-linux-gnueabi
             cmd: cross
+          # - build: linux-armhf
+          #   os: ubuntu-latest
+          #   target: arm-unknown-linux-gnueabihf
+          #   cmd: cross
       fail-fast: false
 
     # Steps represent a sequence of tasks that will be executed as part of the job
