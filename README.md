@@ -151,3 +151,5 @@ fn main() {
 
 - [GitHub仓库](https://github.com/OpenSiFli/sftool)
 - [文档](https://docs.rs/sftool)
+
+test
