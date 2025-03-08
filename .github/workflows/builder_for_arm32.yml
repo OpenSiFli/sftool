@@ -3,7 +3,7 @@
 name: Builder for ARM32
 
 # Controls when the workflow will run
-on: [push, fork, workflow_dispatch]
+on: [workflow_dispatch]
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -45,12 +45,12 @@ jobs:
       - name: Build 
         run: ${{ matrix.cmd }} build --release --target ${{ matrix.target }}
 
-      - name: Upload artifact (arm-unknown-linux-gnueabihf)
-        if: matrix.target == 'arm-unknown-linux-gnueabihf'
-        uses: actions/upload-artifact@v4
-        with:
-          name: sftool-armhf-unknown-linux-gnueabihf
-          path: target/${{ matrix.target }}/release/sftool
+      # - name: Upload artifact (arm-unknown-linux-gnueabihf)
+      #   if: matrix.target == 'arm-unknown-linux-gnueabihf'
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: sftool-armhf-unknown-linux-gnueabihf
+      #     path: target/${{ matrix.target }}/release/sftool
 
       - name: Upload artifact (arm-unknown-linux-gnueabi)
         if: matrix.target == 'arm-unknown-linux-gnueabi'
