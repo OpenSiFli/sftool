@@ -7,7 +7,7 @@ pre-build = [
 
 [target.arm-unknown-linux-gnueabi]
 pre-build = [
-    "apt-get update && apt-get install -y pkg-config libc6-dev-armel-cross wget",
+    "apt-get update && apt-get install -y pkg-config wget",
     "wget https://raw.githubusercontent.com/cross-rs/wiki_assets/refs/heads/main/FAQ/Debian%20Repositories/install-deb.sh",
     "sed -i 's/http:\\/\\/security.debian.org\\/ buster\\/updates/https:\\/\\/security.debian.org\\/debian-security bookworm-security/g' install-deb.sh",
     "sed -i 's/buster/bookworm/g' install-deb.sh",
@@ -16,5 +16,6 @@ pre-build = [
     "sed -i 's/release-{7,8,9,10}.asc/release-{10,11,12}.asc/g' install-deb.sh",
     "sed -i 's/archive_{2020,2021,2022}.key/archive_2025.key/g' install-deb.sh",
     "chmod +x install-deb.sh",
-    "bash install-deb.sh $CROSS_DEB_ARCH libudev-dev"
+    "bash install-deb.sh $CROSS_DEB_ARCH libudev-dev",
+    "apt-get install -y libc6-dev-armel-cross"
 ]
