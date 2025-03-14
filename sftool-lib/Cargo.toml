@@ -7,7 +7,7 @@ edition = "2024"
 path = "src/lib.rs"
 
 [dependencies]
-probe-rs = { git = "https://github.com/OpenSiFli/probe-rs.git", branch = "dev" }
+probe-rs = { git = "https://github.com/probe-rs/probe-rs.git", branch = "master" }
 serialport = "4.7.0"
 rust-embed = { version = "8.6.0", features = ["debug-embed", "compression"] }
 strum = {version = "0.27.1",features = ["derive"]}

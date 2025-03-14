@@ -41,16 +41,6 @@ cargo build --release
 
 ## 使用方法
 
-### 配置串口
-
-为了使sftool将您的串口认作sf32的调试串口，您需要：
-
-方法1（尚不可用）: 修改您CH343的`production string`，使其包含`SiFli`字符串（大小写不敏感）。
-
-方法2: 设置一个`SIFLI_UART_DEBUG`环境变量，然后重启软件或电脑使其生效。
-
-Tip: 这些方法同样适用于[probe-rs](https://github.com/OpenSiFli/probe-rs/tree/dev)。
-
 ### 基本命令格式
 
 ```bash

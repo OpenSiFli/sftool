@@ -22,6 +22,7 @@ use probe_rs::{MemoryInterface, MemoryMappedRegister, Permissions, RegisterId, R
 use ram_stub::CHIP_FILE_NAME;
 use serialport;
 use serialport::SerialPort;
+use std::env;
 use std::io::{Read, Write};
 use std::time::Duration;
 
@@ -144,6 +145,10 @@ impl SifliTool {
             spinner.set_style(ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap());
             spinner.set_prefix("0x00");
             spinner.set_message("Connecting to chip...");
+        }
+
+        unsafe {
+            env::set_var("SIFLI_UART_DEBUG", "1");
         }
 
         let lister = Lister::new();

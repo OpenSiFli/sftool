@@ -42,7 +42,7 @@ jobs:
           - build: windows-i686
             os: windows-latest
             target: i686-pc-windows-msvc
-            cmd: cross
+            cmd: cargo
       fail-fast: false
 
     # Steps represent a sequence of tasks that will be executed as part of the job

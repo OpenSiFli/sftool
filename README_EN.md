@@ -43,14 +43,6 @@ cargo build --release
 
 ### Configuring the Serial Port  
 
-To have `sftool` recognize your serial port as the debug port for `sf32`, follow one of these methods:  
-
-Method 1 (Not yet available):  Modify the `production string` of your CH343 to include the keyword `SiFli` (case-insensitive).  
-
-Method 2:  Set the environment variable `SIFLI_UART_DEBUG`, then restart the software or your computer for the changes to take effect.  
-
-Tip: These methods also apply to [probe-rs](https://github.com/OpenSiFli/probe-rs/tree/dev).
-
 ### Basic Command Format
 
 ```bash
