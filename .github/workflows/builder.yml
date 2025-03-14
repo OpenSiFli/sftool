@@ -13,7 +13,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        build: [linux, macos, windows, macos-intel, linux-aarch64]
+        build: [linux, macos, windows, macos-intel, linux-aarch64, linux-i686, windows-i686]
         include:
           - build: linux
             os: ubuntu-latest
@@ -34,6 +34,14 @@ jobs:
           - build: linux-aarch64
             os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
+            cmd: cross
+          - build: linux-i686
+            os: ubuntu-latest
+            target: i686-unknown-linux-gnu
+            cmd: cross
+          - build: windows-i686
+            os: windows-latest
+            target: i686-pc-windows-msvc
             cmd: cross
       fail-fast: false
 
@@ -95,3 +103,17 @@ jobs:
         with:
           name: sftool-aarch64-apple-darwin
           path: target/${{ matrix.target }}/release/sftool
+          
+      - name: Upload artifact (i686-unknown-linux-gnu)
+        if: matrix.target == 'i686-unknown-linux-gnu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sftool-i686-unknown-linux-gnu
+          path: target/${{ matrix.target }}/release/sftool
+
+      - name: Upload artifact (i686-pc-windows-msvc)
+        if: matrix.target == 'i686-pc-windows-msvc'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sftool-i686-pc-windows-msvc
+          path: target/${{ matrix.target }}/release/sftool.exe
