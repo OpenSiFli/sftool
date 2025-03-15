@@ -13,6 +13,8 @@ use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use tempfile::tempfile;
 
+const ELF_MAGIC: &[u8] = &[0x7F, 0x45, 0x4C, 0x46]; // ELF file magic number
+
 pub trait WriteFlashTrait {
     fn write_flash(&mut self) -> Result<(), std::io::Error>;
 }
@@ -42,16 +44,29 @@ fn str_to_u32(s: &str) -> Result<u32, std::num::ParseIntError> {
     }
 }
 
-fn get_file_type(s: &str) -> Result<FileType, std::io::Error> {
-    match s.split('.').last().unwrap().to_lowercase().as_str() {
-        "bin" => Ok(FileType::Bin),
-        "hex" => Ok(FileType::Hex),
-        "elf" | "axf" => Ok(FileType::Elf),
-        _ => Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Wrong file type",
-        )),
+fn detect_file_type(path: &Path) -> Result<FileType, std::io::Error> {
+    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+        match ext.to_lowercase().as_str() {
+            "bin" => return Ok(FileType::Bin),
+            "hex" => return Ok(FileType::Hex),
+            "elf" | "axf" => return Ok(FileType::Elf),
+            _ => {} // 如果扩展名无法识别，继续检查MAGIC
+        }
     }
+    
+    // 如果没有可识别的扩展名，则检查文件MAGIC
+    let mut file = File::open(path)?;
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic)?;
+    
+    if magic == ELF_MAGIC {
+        return Ok(FileType::Elf);
+    }
+    
+    Err(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "Unrecognized file type",
+    ))
 }
 
 fn hex_to_bin(hex_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
@@ -118,27 +133,74 @@ fn hex_to_bin(hex_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
 
 fn elf_to_bin(elf_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
     let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
+    const SECTOR_SIZE: u32 = 0x1000; // 扇区大小
+    const FILL_BYTE: u8 = 0xFF; // 填充字节
 
     let file = File::open(elf_file)?;
     let mmap = unsafe { Mmap::map(&file)? };
     let elf = goblin::elf::Elf::parse(&mmap[..])
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-    let mut address = 0;
-    let mut temp_file = tempfile()?;
-    for ph in elf.program_headers.iter() {
-        if ph.p_type == goblin::elf::program_header::PT_LOAD {
-            let offset = ph.p_offset;
-            let size = ph.p_filesz;
-            let data = &mmap[offset as usize..(offset + size) as usize];
-            temp_file.write_all(data)?;
-            let crc32 = get_file_crc32(&temp_file.try_clone()?)?;
+
+    // 收集所有需要烧录的段
+    let mut load_segments: Vec<_> = elf.program_headers.iter()
+        .filter(|ph| ph.p_type == goblin::elf::program_header::PT_LOAD && ph.p_vaddr < 0x2000_0000)
+        .collect();
+    load_segments.sort_by_key(|ph| ph.p_vaddr);
+
+    if load_segments.is_empty() {
+        return Ok(write_flash_files);
+    }
+
+    let mut current_file = tempfile()?;
+    let mut current_base = (load_segments[0].p_vaddr as u32) & !(SECTOR_SIZE - 1);
+    let mut current_offset = 0; // 跟踪当前文件中的偏移量
+
+    for ph in load_segments.iter() {
+        let vaddr = ph.p_vaddr as u32;
+        let offset = ph.p_offset as usize;
+        let size = ph.p_filesz as usize;
+        let data = &mmap[offset..offset +   size];
+        
+        // 计算当前段的对齐基地址
+        let segment_base = vaddr & !(SECTOR_SIZE - 1);
+
+        // 如果超出了当前对齐块，创建新文件
+        if segment_base > current_base + current_offset {
+            current_file.seek(std::io::SeekFrom::Start(0))?;
+            let crc32 = get_file_crc32(&current_file)?;
             write_flash_files.push(WriteFlashFile {
-                address,
-                file: temp_file.try_clone()?,
+                address: current_base,
+                file: std::mem::replace(&mut current_file, tempfile()?),
                 crc32,
             });
-            address += size as u32;
+            current_base = segment_base;
+            current_offset = 0;
         }
+
+        // 计算相对于当前文件基地址的偏移
+        let relative_offset = vaddr - current_base;
+        
+        // 如果当前偏移小于目标偏移，填充间隙
+        if current_offset < relative_offset {
+            let padding = relative_offset - current_offset;
+            current_file.write_all(&vec![FILL_BYTE; padding as usize])?;
+            current_offset = relative_offset;
+        }
+
+        // 写入数据
+        current_file.write_all(data)?;
+        current_offset += size as u32;
+    }
+
+    // 处理最后一个bin文件
+    if current_offset > 0 {
+        current_file.seek(std::io::SeekFrom::Start(0))?;
+        let crc32 = get_file_crc32(&current_file)?;
+        write_flash_files.push(WriteFlashFile {
+            address: current_base,
+            file: current_file,
+            crc32,
+        });
     }
 
     Ok(write_flash_files)
@@ -268,16 +330,7 @@ impl WriteFlashTrait for SifliTool {
                 continue;
             }
 
-            let wrong_file_type_err = || -> std::io::Error {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Wrong file type, if you want to download a bin file without a suffix, use the <file@address> form",
-                )
-            };
-            // 判断文件后缀
-            let file_suffix = parts[0].split('.').last().ok_or(wrong_file_type_err())?;
-
-            let file_type = get_file_type(file_suffix)?;
+            let file_type = detect_file_type(Path::new(parts[0]))?;
 
             match file_type {
                 FileType::Hex => {
@@ -287,7 +340,10 @@ impl WriteFlashTrait for SifliTool {
                     write_flash_files.append(&mut elf_to_bin(Path::new(parts[0]))?);
                 }
                 FileType::Bin => {
-                    return Err(wrong_file_type_err());
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "For binary files, please use the <file@address> format",
+                    ));
                 }
             }
         }
