@@ -44,16 +44,29 @@ fn str_to_u32(s: &str) -> Result<u32, std::num::ParseIntError> {
     }
 }
 
-fn get_file_type(s: &str) -> Result<FileType, std::io::Error> {
-    match s.split('.').last().unwrap().to_lowercase().as_str() {
-        "bin" => Ok(FileType::Bin),
-        "hex" => Ok(FileType::Hex),
-        "elf" | "axf" => Ok(FileType::Elf),
-        _ => Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Wrong file type",
-        )),
+fn detect_file_type(path: &Path) -> Result<FileType, std::io::Error> {
+    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+        match ext.to_lowercase().as_str() {
+            "bin" => return Ok(FileType::Bin),
+            "hex" => return Ok(FileType::Hex),
+            "elf" | "axf" => return Ok(FileType::Elf),
+            _ => {} // 如果扩展名无法识别，继续检查MAGIC
+        }
     }
+    
+    // 如果没有可识别的扩展名，则检查文件MAGIC
+    let mut file = File::open(path)?;
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic)?;
+    
+    if magic == ELF_MAGIC {
+        return Ok(FileType::Elf);
+    }
+    
+    Err(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "Unrecognized file type",
+    ))
 }
 
 fn hex_to_bin(hex_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
@@ -127,7 +140,7 @@ fn elf_to_bin(elf_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
     let mmap = unsafe { Mmap::map(&file)? };
     let elf = goblin::elf::Elf::parse(&mmap[..])
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-    
+
     // 收集所有需要烧录的段
     let mut load_segments: Vec<_> = elf.program_headers.iter()
         .filter(|ph| ph.p_type == goblin::elf::program_header::PT_LOAD && ph.p_paddr < 0x2000_0000)
@@ -317,16 +330,7 @@ impl WriteFlashTrait for SifliTool {
                 continue;
             }
 
-            let wrong_file_type_err = || -> std::io::Error {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Wrong file type, if you want to download a bin file without a suffix, use the <file@address> form",
-                )
-            };
-            // 判断文件后缀
-            let file_suffix = parts[0].split('.').last().ok_or(wrong_file_type_err())?;
-
-            let file_type = get_file_type(file_suffix)?;
+            let file_type = detect_file_type(Path::new(parts[0]))?;
 
             match file_type {
                 FileType::Hex => {
@@ -336,7 +340,10 @@ impl WriteFlashTrait for SifliTool {
                     write_flash_files.append(&mut elf_to_bin(Path::new(parts[0]))?);
                 }
                 FileType::Bin => {
-                    return Err(wrong_file_type_err());
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "For binary files, please use the <file@address> format",
+                    ));
                 }
             }
         }
