@@ -1,5 +1,5 @@
-use std::cmp::PartialEq;
 use crate::SifliTool;
+use std::cmp::PartialEq;
 use std::io::{Error, Write};
 use std::str::FromStr;
 use strum::{Display, EnumString};
@@ -44,7 +44,6 @@ pub trait RamCommand {
 
 const TIMEOUT: u128 = 4000; //ms
 
-
 impl RamCommand for SifliTool {
     fn command(&mut self, cmd: Command) -> Result<Response, std::io::Error> {
         self.port.write_all(cmd.to_string().as_bytes())?;
@@ -79,10 +78,15 @@ impl RamCommand for SifliTool {
             buffer.push(byte[0]);
 
             for response_str in RESPONSE_STR_TABLE.iter() {
-                let buffer_str = std::str::from_utf8(&buffer).unwrap();
-                if buffer_str.contains(response_str) {
+                let response_bytes = response_str.as_bytes();
+                // 对比buffer和response_bytes，如果buffer中包含response_str，就认为接收完毕
+                // 不需要转成字符串，直接对比字节
+                let exists = buffer
+                    .windows(response_bytes.len())
+                    .any(|window| window == response_bytes);
+                if exists {
                     return Response::from_str(response_str).map_err(|e| {
-                        Error::new(std::io::ErrorKind::InvalidData, e.to_string())
+                        std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
                     });
                 }
             }
@@ -101,7 +105,7 @@ impl RamCommand for SifliTool {
                 std::thread::sleep(std::time::Duration::from_millis(10));
             }
         }
-        
+
         let mut buffer = Vec::new();
         let now = std::time::SystemTime::now();
         loop {
@@ -119,15 +123,11 @@ impl RamCommand for SifliTool {
 
             // 一旦buffer出现RESPONSE_STR_TABLE中的任意一个，不一定是结束字节，也可能是在buffer中间出现，就认为接收完毕
             for response_str in RESPONSE_STR_TABLE.iter() {
-                let buffer_str = std::str::from_utf8(&buffer).ok();
-                let buffer_str = match buffer_str {
-                    Some(buffer_str) => buffer_str,
-                    None => {
-                        buffer.clear();
-                        continue;
-                    }
-                };
-                if buffer_str.contains(response_str) {
+                let response_bytes = response_str.as_bytes();
+                let exists = buffer
+                    .windows(response_bytes.len())
+                    .any(|window| window == response_bytes);
+                if exists {
                     return Response::from_str(response_str).map_err(|e| {
                         std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
                     });

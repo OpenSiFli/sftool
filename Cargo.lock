@@ -1841,7 +1841,7 @@ dependencies = [
 
 [[package]]
 name = "sftool"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "clap",
  "sftool-lib",
@@ -1852,7 +1852,7 @@ dependencies = [
 
 [[package]]
 name = "sftool-lib"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "console",
  "crc",

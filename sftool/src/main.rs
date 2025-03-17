@@ -56,8 +56,8 @@ struct Cli {
     #[arg(long = "after", value_enum, default_value = "soft_reset")]
     after: Operation,
 
-    /// Number of attempts to connect, negative or 0 for infinite. Default: 7.
-    #[arg(long = "connect-attempts", default_value_t = 7)]
+    /// Number of attempts to connect, negative or 0 for infinite. Default: 3.
+    #[arg(long = "connect-attempts", default_value_t = 3)]
     connect_attempts: i8,
 
     /// Enable compatibility mode
@@ -104,6 +104,7 @@ fn main() {
             chip: args.chip.to_string().to_lowercase(),
             memory_type: args.memory.to_string().to_lowercase(),
             quiet: false,
+            connect_attempts: args.connect_attempts,
             baud: args.baud,
             compat: args.compat,
         },

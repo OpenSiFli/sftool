@@ -6,19 +6,21 @@ pub mod write_flash;
 
 use console::Term;
 use indicatif::{ProgressBar, ProgressStyle};
-use probe_rs::architecture::arm::FullyQualifiedApAddress;
 use probe_rs::architecture::arm::armv8m::Dhcsr;
 use probe_rs::architecture::arm::core::registers::cortex_m::{PC, SP};
 use probe_rs::architecture::arm::dp::DpAddress;
 use probe_rs::architecture::arm::sequences::ArmDebugSequence;
+use probe_rs::architecture::arm::FullyQualifiedApAddress;
 use probe_rs::config::Chip;
 use probe_rs::config::DebugSequence::Arm;
 use probe_rs::probe::list::Lister;
 use probe_rs::probe::sifliuart::SifliUart;
-use probe_rs::probe::{DebugProbe, DebugProbeError, ProbeCreationError};
-use probe_rs::vendor::Vendor;
+use probe_rs::probe::{DebugProbe, DebugProbeError, Probe, ProbeCreationError};
 use probe_rs::vendor::sifli::Sifli;
-use probe_rs::{MemoryInterface, MemoryMappedRegister, Permissions, RegisterId, RegisterRole};
+use probe_rs::vendor::Vendor;
+use probe_rs::{
+    Error, MemoryInterface, MemoryMappedRegister, Permissions, RegisterId, RegisterRole, Session,
+};
 use ram_stub::CHIP_FILE_NAME;
 use serialport;
 use serialport::SerialPort;
@@ -32,6 +34,7 @@ pub struct SifliToolBase {
     pub chip: String,
     pub memory_type: String,
     pub baud: u32,
+    pub connect_attempts: i8,
     pub compat: bool,
     pub quiet: bool,
 }
@@ -47,12 +50,67 @@ pub struct WriteFlashParams {
 pub struct SifliTool {
     port: Box<dyn SerialPort>,
     base: SifliToolBase,
+    step: i32,
     write_flash_params: Option<WriteFlashParams>,
+}
+
+fn attempt_connect(
+    mut probe: Probe,
+    base_param: &SifliToolBase,
+    step: &mut i32,
+) -> Result<Session, Error> {
+    // 当 connect_attempts 小于等于 0 时视为无限重试，否则设定有限重试次数
+    let infinite_attempts = base_param.connect_attempts <= 0;
+    let mut remaining_attempts = if infinite_attempts {
+        None
+    } else {
+        Some(base_param.connect_attempts)
+    };
+
+    let mut value = probe.attach(base_param.chip.clone(), Permissions::default());
+    loop {
+        // 如果有限重试，检查是否还有机会
+        if let Some(ref mut attempts) = remaining_attempts {
+            if *attempts == 0 {
+                break; // 超过最大重试次数则退出循环
+            }
+            *attempts -= 1;
+        }
+
+        let spinner = ProgressBar::new_spinner();
+        if !base_param.quiet {
+            spinner.enable_steady_tick(Duration::from_millis(100));
+            spinner.set_style(ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap());
+            spinner.set_prefix(format!("0x{:02X}", step));
+            *step = step.wrapping_add(1);
+            spinner.set_message("Connecting to chip...");
+        }
+
+        // 尝试连接
+        match value {
+            Ok(session) => {
+                if !base_param.quiet {
+                    spinner.finish_with_message("Connected success!");
+                }
+                return Ok(session);
+            }
+            Err(_) => {
+                if !base_param.quiet {
+                    spinner.finish_with_message("Failed to connect to the chip, retrying...");
+                }
+                std::thread::sleep(Duration::from_millis(500));
+            }
+        }
+    }
+
+    Err(Error::Probe(DebugProbeError::Other(
+        "Failed to connect to the chip".to_string(),
+    )))
 }
 
 impl SifliTool {
     pub fn new(base_param: SifliToolBase, write_flash_params: Option<WriteFlashParams>) -> Self {
-        Self::download_stub(&base_param).unwrap();
+        let step = Self::download_stub(&base_param).unwrap();
         let mut port = serialport::new(&base_param.port_name, 1000000)
             .timeout(Duration::from_secs(5))
             .open()
@@ -70,6 +128,7 @@ impl SifliTool {
 
         Self {
             port,
+            step,
             base: base_param,
             write_flash_params,
         }
@@ -138,14 +197,9 @@ impl SifliTool {
         Ok(())
     }
 
-    fn download_stub(base_param: &SifliToolBase) -> Result<(), std::io::Error> {
+    fn download_stub(base_param: &SifliToolBase) -> Result<i32, std::io::Error> {
         let spinner = ProgressBar::new_spinner();
-        if !base_param.quiet {
-            spinner.enable_steady_tick(Duration::from_millis(100));
-            spinner.set_style(ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap());
-            spinner.set_prefix("0x00");
-            spinner.set_message("Connecting to chip...");
-        }
+        let mut step = 0;
 
         unsafe {
             env::set_var("SIFLI_UART_DEBUG", "1");
@@ -173,9 +227,17 @@ impl SifliTool {
             .open()
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
-        let mut session = probe
-            .attach(base_param.chip.clone(), Permissions::default())
+        let mut session = attempt_connect(probe, base_param, &mut step)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+        if !base_param.quiet {
+            spinner.enable_steady_tick(Duration::from_millis(100));
+            spinner.set_style(ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap());
+            spinner.set_prefix(format!("0x{:02X}", step));
+            step = step.wrapping_add(1);
+            spinner.set_message("Downloading stub...");
+        }
+
         let mut core = session
             .core(0)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
@@ -228,11 +290,11 @@ impl SifliTool {
 
         core.run()
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(Duration::from_secs(1));
 
         if !base_param.quiet {
-            spinner.finish_with_message("Successfully connected!");
+            spinner.finish_with_message("Stub download success!");
         }
-        Ok(())
+        Ok(step)
     }
 }
