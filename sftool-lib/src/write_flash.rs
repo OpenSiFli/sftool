@@ -13,6 +13,8 @@ use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use tempfile::tempfile;
 
+const ELF_MAGIC: &[u8] = &[0x7F, 0x45, 0x4C, 0x46]; // ELF file magic number
+
 pub trait WriteFlashTrait {
     fn write_flash(&mut self) -> Result<(), std::io::Error>;
 }
@@ -118,32 +120,74 @@ fn hex_to_bin(hex_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
 
 fn elf_to_bin(elf_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
     let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
+    const SECTOR_SIZE: u32 = 0x1000; // 扇区大小
+    const FILL_BYTE: u8 = 0xFF; // 填充字节
 
     let file = File::open(elf_file)?;
     let mmap = unsafe { Mmap::map(&file)? };
     let elf = goblin::elf::Elf::parse(&mmap[..])
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
     
-    for ph in elf.program_headers.iter() {
-        if ph.p_type == goblin::elf::program_header::PT_LOAD {
-            let offset = ph.p_offset;
-            let size = ph.p_filesz;
-            let address = ph.p_vaddr as u32; // 使用程序头的虚拟地址作为起始地址
-            if address < 0x2000_0000 { // 不用烧录RAM中的内容
-            let data = &mmap[offset as usize..(offset + size) as usize];
-                let mut temp_file = tempfile()?;
-            temp_file.write_all(data)?;
-                // 将文件指针移回开头以计算 CRC
-                temp_file.seek(std::io::SeekFrom::Start(0))?;
-                let crc32 = get_file_crc32(&temp_file)?;
+    // 收集所有需要烧录的段
+    let mut load_segments: Vec<_> = elf.program_headers.iter()
+        .filter(|ph| ph.p_type == goblin::elf::program_header::PT_LOAD && ph.p_paddr < 0x2000_0000)
+        .collect();
+    load_segments.sort_by_key(|ph| ph.p_paddr);
 
+    if load_segments.is_empty() {
+        return Ok(write_flash_files);
+    }
+
+    let mut current_file = tempfile()?;
+    let mut current_base = (load_segments[0].p_paddr as u32) & !(SECTOR_SIZE - 1);
+    let mut current_offset = 0; // 跟踪当前文件中的偏移量
+
+    for ph in load_segments.iter() {
+        let vaddr = ph.p_paddr as u32;
+        let offset = ph.p_offset as usize;
+        let size = ph.p_filesz as usize;
+        let data = &mmap[offset..offset + size];
+        
+        // 计算当前段的对齐基地址
+        let segment_base = vaddr & !(SECTOR_SIZE - 1);
+
+        // 如果超出了当前对齐块，创建新文件
+        if segment_base > current_base + current_offset {
+            current_file.seek(std::io::SeekFrom::Start(0))?;
+            let crc32 = get_file_crc32(&current_file)?;
             write_flash_files.push(WriteFlashFile {
-                address,
-                    file: temp_file,
+                address: current_base,
+                file: std::mem::replace(&mut current_file, tempfile()?),
                 crc32,
             });
-            }
+            current_base = segment_base;
+            current_offset = 0;
         }
+
+        // 计算相对于当前文件基地址的偏移
+        let relative_offset = vaddr - current_base;
+        
+        // 如果当前偏移小于目标偏移，填充间隙
+        if current_offset < relative_offset {
+            let padding = relative_offset - current_offset;
+            current_file.write_all(&vec![FILL_BYTE; padding as usize])?;
+            current_offset = relative_offset;
+        }
+
+        // 写入数据
+        current_file.write_all(data)?;
+        current_offset += size as u32;
+    }
+
+    // 处理最后一个bin文件
+    if current_offset > 0 {      
+        current_file.seek(std::io::SeekFrom::Start(0))?;
+        let crc32 = get_file_crc32(&current_file)?;
+        write_flash_files.push(WriteFlashFile {
+            address: current_base,
+            file: current_file,
+            crc32,
+        });
     }
 
     Ok(write_flash_files)
