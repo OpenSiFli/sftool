@@ -231,7 +231,7 @@ impl SifliTool {
         std::thread::sleep(Duration::from_millis(500));
 
         if !base_param.quiet {
-            spinner.finish_with_message("Connected success!");
+            spinner.finish_with_message("Successfully connected!");
         }
         Ok(())
     }

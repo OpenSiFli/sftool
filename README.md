@@ -96,7 +96,7 @@ Windows:
 
 ```bash
 # 写入多个文件到不同地址
-sftool -c SF32LB52 -p /dev/ttyUSB0 write_flash bootloader.bin@0x1000 app.bin@0x12010000 ftab.bin@0x12000000
+sftool -c SF32LB52 -p /dev/ttyUSB0 write_flash bootloader.bin@0x12010000 app.bin@0x12020000 ftab.bin@0x12000000
 # 其它同上
 ```
 

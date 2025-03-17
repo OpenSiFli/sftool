@@ -66,7 +66,7 @@ sftool [OPTIONS] COMMAND [COMMAND OPTIONS]
 # Linux/Mac
 sftool -c SF32LB52 -p /dev/ttyUSB0 write_flash [OPTIONS] <FILE@ADDRESS>...
 # Windows
-sftool -c SF32LB52 -p COM9 write_flash [选项] <文件@地址>...
+sftool -c SF32LB52 -p COM9 write_flash [OPTIONS] <FILE@ADDRESS>...
 ```
 
 #### Write Flash Options
@@ -98,7 +98,7 @@ Windows:
 
 ```bash
 # Write multiple files to different addresses
-sftool -c SF32LB52 -p COM7 write_flash bootloader.bin@0x1000 app.bin@0x12010000 ftab.bin@0x12000000
+sftool -c SF32LB52 -p COM7 write_flash bootloader.bin@0x12010000 app.bin@0x12020000 ftab.bin@0x12000000
 # Other as above
 ```
 
