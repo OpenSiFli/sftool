@@ -18,31 +18,24 @@ jobs:
           - build: linux
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            cmd: cargo
           - build: macos
             os: macos-latest
             target: aarch64-apple-darwin
-            cmd: cargo
           - build: windows
             os: windows-latest
             target: x86_64-pc-windows-msvc
-            cmd: cargo
           - build: macos-intel
             os: macos-13
             target: x86_64-apple-darwin
-            cmd: cargo
           - build: linux-aarch64
             os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            cmd: cross
           - build: linux-i686
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
-            cmd: cross
           - build: windows-i686
             os: windows-latest
             target: i686-pc-windows-msvc
-            cmd: cargo
       fail-fast: false
 
     # Steps represent a sequence of tasks that will be executed as part of the job
@@ -59,61 +52,63 @@ jobs:
           profile: minimal
           override: true
       
-      - name: Prepare deps on Linux amd64
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: "sudo apt-get update && sudo apt-get install --assume-yes && sudo apt-get install -y pkg-config libudev-dev"
+      - name: Prepare deps on macOS
+        if: runner.os == 'macos'
+        run: "brew install coreutils"
 
       - name: Prepare cross
         run: cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Build 
-        run: ${{ matrix.cmd }} build --release --target ${{ matrix.target }}
+        run: cross build --release --target ${{ matrix.target }}
+        env:
+          CROSS_NO_WARNINGS: 0
+      
+      - name: Create Zip Archive and sha256
+        if: matrix.os == 'windows-latest'
+        run: |
+          $version = $env:GITHUB_REF_NAME
+          Write-Host "Tag version: $version"
+          $zipFile = "sftool-$version-${{matrix.target}}.zip"
+          Compress-Archive -Path "target/${{matrix.target}}/release/sftool.exe" -DestinationPath $zipFile
+          $hash = Get-FileHash -Path $zipFile -Algorithm SHA256
+          Write-Host "SHA256: $($hash.Hash)"
+          $hash = Get-FileHash -Algorithm SHA256 -Path $zipFile | Select-Object -ExpandProperty Hash
+          $hash | Out-File -Encoding ASCII "$zipFile.sha256"
+        shell: pwsh
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
 
-      - name: Upload artifact (x86_64-unknown-linux-gnu)
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
+      - name: Create tar.xz Archive and sha256
+        if: matrix.os != 'windows-latest'
+        run: |
+          version=$GITHUB_REF_NAME
+          echo "Tag version: $version"
+          tar -cJf "sftool-$version-${{matrix.target}}.tar.xz" -C "target/${{matrix.target}}/release" sftool
+          sha256sum "sftool-$version-${{matrix.target}}.tar.xz" > "sftool-$version-${{matrix.target}}.tar.xz.sha256"
+        shell: bash
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+      
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sftool-x86_64-unknown-linux-gnu
-          path: target/${{ matrix.target }}/release/sftool
-
-      - name: Upload artifact (x86_64-apple-darwin)
-        if: matrix.target == 'x86_64-apple-darwin'
-        uses: actions/upload-artifact@v4
+          name: sftool-${{ matrix.target }}-${{ github.ref_name }}
+          path: |
+            sftool-*.zip
+            sftool-*.tar.xz
+            sftool-*.sha256
+      
+      - name: Create Release and Upload Assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: ncipollo/release-action@v1
         with:
-          name: sftool-x86_64-apple-darwin
-          path: target/${{ matrix.target }}/release/sftool
-          
-      - name: Upload artifact (x86_64-pc-windows-msvc)
-        if: matrix.target == 'x86_64-pc-windows-msvc'
-        uses: actions/upload-artifact@v4
-        with:
-          name: sftool-x86_64-pc-windows-msvc
-          path: target/${{ matrix.target }}/release/sftool.exe
-          
-      - name: Upload artifact (aarch64-unknown-linux-gnu)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        uses: actions/upload-artifact@v4
-        with:
-          name: sftool-aarch64-unknown-linux-gnu
-          path: target/${{ matrix.target }}/release/sftool
-          
-      - name: Upload artifact (aarch64-apple-darwin)
-        if: matrix.target == 'aarch64-apple-darwin'
-        uses: actions/upload-artifact@v4
-        with:
-          name: sftool-aarch64-apple-darwin
-          path: target/${{ matrix.target }}/release/sftool
-          
-      - name: Upload artifact (i686-unknown-linux-gnu)
-        if: matrix.target == 'i686-unknown-linux-gnu'
-        uses: actions/upload-artifact@v4
-        with:
-          name: sftool-i686-unknown-linux-gnu
-          path: target/${{ matrix.target }}/release/sftool
-
-      - name: Upload artifact (i686-pc-windows-msvc)
-        if: matrix.target == 'i686-pc-windows-msvc'
-        uses: actions/upload-artifact@v4
-        with:
-          name: sftool-i686-pc-windows-msvc
-          path: target/${{ matrix.target }}/release/sftool.exe
+          tag: ${{ github.ref_name }}
+          allowUpdates: true
+          generateReleaseNotes: true
+          artifacts: |
+            sftool-*.zip
+            sftool-*.tar.xz
+            sftool-*.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
