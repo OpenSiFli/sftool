@@ -74,14 +74,14 @@ fn hex_to_bin(hex_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
 
     let file = std::fs::File::open(hex_file)?;
     let mut reader = std::io::BufReader::new(file);
-    let mut line = String::new();
 
     let mut address = 0;
     let mut temp_file = tempfile()?;
 
-    loop {
-        line.clear();
-        let bytes_read = reader.read_line(&mut line)?;
+    for line in reader.lines() {
+        let line = line?;
+        let line = line.trim_end_matches('\r');
+        let bytes_read = line.len();
         if bytes_read == 0 {
             break;
         }
