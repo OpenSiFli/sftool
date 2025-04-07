@@ -15,7 +15,7 @@ use probe_rs::config::Chip;
 use probe_rs::config::DebugSequence::Arm;
 use probe_rs::probe::list::Lister;
 use probe_rs::probe::sifliuart::SifliUart;
-use probe_rs::probe::{DebugProbe, DebugProbeError, Probe, ProbeCreationError};
+use probe_rs::probe::{DebugProbe, DebugProbeError, DebugProbeInfo, Probe, ProbeCreationError};
 use probe_rs::vendor::sifli::Sifli;
 use probe_rs::vendor::Vendor;
 use probe_rs::{
@@ -55,7 +55,7 @@ pub struct SifliTool {
 }
 
 fn attempt_connect(
-    mut probe: Probe,
+    probe: DebugProbeInfo,
     base_param: &SifliToolBase,
     step: &mut i32,
 ) -> Result<Session, Error> {
@@ -66,9 +66,9 @@ fn attempt_connect(
     } else {
         Some(base_param.connect_attempts)
     };
-
-    let mut value = probe.attach(base_param.chip.clone(), Permissions::default());
+    
     loop {
+        let value = probe.open()?.attach(base_param.chip.clone(), Permissions::default());
         // 如果有限重试，检查是否还有机会
         if let Some(ref mut attempts) = remaining_attempts {
             if *attempts == 0 {
@@ -223,9 +223,7 @@ impl SifliTool {
                 "No probe found with the given serial number",
             ));
         };
-        let probe = probes[index]
-            .open()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let probe = probes[index].clone();
 
         let mut session = attempt_connect(probe, base_param, &mut step)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
