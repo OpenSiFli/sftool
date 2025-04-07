@@ -1,3 +1,4 @@
+use sftool_lib::ram_command::DownloadStub;
 use sftool_lib::reset::Reset;
 use clap::{Parser, Subcommand, ValueEnum};
 use sftool_lib::write_flash::WriteFlashTrait;
@@ -113,6 +114,8 @@ fn main() {
             None
         },
     );
+    
+    siflitool.download_stub().unwrap();
     
     if args.baud != 1000000 {
         siflitool.set_speed(args.baud).unwrap();

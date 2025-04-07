@@ -1,8 +1,12 @@
-use crate::SifliTool;
+use crate::{ram_stub, SifliTool};
+use crate::sifli_debug::SifliUartCommand;
+use probe_rs::MemoryMappedRegister;
 use std::cmp::PartialEq;
 use std::io::{Error, Write};
 use std::str::FromStr;
 use strum::{Display, EnumString};
+use crate::ram_stub::CHIP_FILE_NAME;
+use probe_rs::architecture::arm::core::registers::cortex_m::{PC, SP};
 
 #[derive(EnumString, Display, Debug, Clone, PartialEq, Eq)]
 pub enum Command {
@@ -134,5 +138,89 @@ impl RamCommand for SifliTool {
                 }
             }
         }
+    }
+}
+
+pub trait DownloadStub {
+    fn download_stub(&mut self) -> Result<(), std::io::Error>;
+}
+
+
+impl DownloadStub for SifliTool {
+    fn download_stub(&mut self) -> Result<(), std::io::Error> {
+        /// 1. reset and halt
+        /// 1.1. reset_catch_set
+        use probe_rs::architecture::arm::core::armv7m::Demcr;
+        let demcr = self.debug_read_word32(Demcr::get_mmio_address() as u32)?;
+        let mut demcr = Demcr(demcr);
+        demcr.set_vc_corereset(true);
+        self.debug_write_word32(Demcr::get_mmio_address() as u32, demcr.into())?;
+        /// 1.2. reset_system
+        use probe_rs::architecture::arm::core::armv7m::Aircr;
+
+        let mut aircr = Aircr(0);
+        aircr.vectkey();
+        aircr.set_sysresetreq(true);
+        self.debug_write_word32(Aircr::get_mmio_address() as u32, aircr.into())?;
+        
+        /// 1.3. Re-enter debug mode
+        let _ = self.debug_command(SifliUartCommand::Enter)?;
+        
+        /// 1.4. halt
+        self.debug_halt()?;
+        
+        /// 1.5. reset_catch_clear
+        let demcr = self.debug_read_word32(Demcr::get_mmio_address() as u32)?;
+        let mut demcr = Demcr(demcr);
+        demcr.set_vc_corereset(false);
+        self.debug_write_word32(Demcr::get_mmio_address() as u32, demcr.into())?;
+        
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        /// 2. Download stub
+        let stub = ram_stub::RamStubFile::get(
+            CHIP_FILE_NAME
+                .get(format!("{}_{}", self.base.chip, self.base.memory_type).as_str())
+                .expect("REASON"),
+        );
+        let Some(stub) = stub else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "No stub file found for the given chip and memory type",
+            ));
+        };
+
+        let packet_size = if self.base.compat { 256 } else { 64 * 1024 };
+
+        let mut addr = 0x2005_A000;
+        let mut data = &stub.data[..];
+        while !data.is_empty() {
+            let chunk = &data[..std::cmp::min(data.len(), packet_size)];
+            self.debug_write_memory(addr, chunk)?;
+            addr += chunk.len() as u32;
+            data = &data[chunk.len()..];
+        }
+        
+        /// 3. run ram stub
+        /// 3.1. set SP and PC
+        let sp = u32::from_le_bytes(
+            stub.data[0..4]
+                .try_into()
+                .expect("slice with exactly 4 bytes"),
+        );
+        let pc = u32::from_le_bytes(
+            stub.data[4..8]
+                .try_into()
+                .expect("slice with exactly 4 bytes"),
+        );
+        self.debug_write_core_reg(PC.id, pc)?;
+        self.debug_write_core_reg(SP.id, sp)?;
+        
+        /// 3.2. run
+        self.debug_run()?;
+        
+        self.port.write_all(b"\r\n")?;
+        self.port.flush()?;
+
+        Ok(())
     }
 }
