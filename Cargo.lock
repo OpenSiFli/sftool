@@ -1483,7 +1483,7 @@ checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 [[package]]
 name = "probe-rs"
 version = "0.27.0"
-source = "git+https://github.com/probe-rs/probe-rs.git?branch=master#d2eb3906fdd728df5a7eee7267b6975deb62c506"
+source = "git+https://github.com/OpenSiFli/probe-rs.git?branch=master#bea420ff29e52136ce5b7a057664fe6555b85631"
 dependencies = [
  "anyhow",
  "async-io",
@@ -1517,7 +1517,7 @@ dependencies = [
 [[package]]
 name = "probe-rs-target"
 version = "0.27.0"
-source = "git+https://github.com/probe-rs/probe-rs.git?branch=master#d2eb3906fdd728df5a7eee7267b6975deb62c506"
+source = "git+https://github.com/OpenSiFli/probe-rs.git?branch=master#bea420ff29e52136ce5b7a057664fe6555b85631"
 dependencies = [
  "base64",
  "indexmap",
@@ -1854,6 +1854,7 @@ dependencies = [
 name = "sftool-lib"
 version = "0.1.3"
 dependencies = [
+ "clap",
  "console",
  "crc",
  "elf",

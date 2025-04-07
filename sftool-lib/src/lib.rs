@@ -4,33 +4,42 @@ pub mod reset;
 pub mod speed;
 pub mod write_flash;
 
-use console::Term;
 use indicatif::{ProgressBar, ProgressStyle};
 use probe_rs::architecture::arm::armv8m::Dhcsr;
 use probe_rs::architecture::arm::core::registers::cortex_m::{PC, SP};
 use probe_rs::architecture::arm::dp::DpAddress;
-use probe_rs::architecture::arm::sequences::ArmDebugSequence;
 use probe_rs::architecture::arm::FullyQualifiedApAddress;
 use probe_rs::config::Chip;
 use probe_rs::config::DebugSequence::Arm;
 use probe_rs::probe::list::Lister;
 use probe_rs::probe::sifliuart::SifliUart;
-use probe_rs::probe::{DebugProbe, DebugProbeError, DebugProbeInfo, Probe, ProbeCreationError};
+use probe_rs::probe::{DebugProbe, DebugProbeError, DebugProbeInfo};
 use probe_rs::vendor::sifli::Sifli;
 use probe_rs::vendor::Vendor;
 use probe_rs::{
-    Error, MemoryInterface, MemoryMappedRegister, Permissions, RegisterId, RegisterRole, Session,
+    Error, MemoryInterface, MemoryMappedRegister, Permissions, Session,
 };
 use ram_stub::CHIP_FILE_NAME;
-use serialport;
 use serialport::SerialPort;
 use std::env;
-use std::io::{Read, Write};
+use std::io::{Write};
 use std::time::Duration;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+pub enum Operation {
+    #[cfg_attr(feature = "cli", clap(name = "no_reset"))]
+    None,
+    #[cfg_attr(feature = "cli", clap(name = "soft_reset"))]
+    SoftReset,
+    #[cfg_attr(feature = "cli", clap(name = "default_reset"))]
+    DefaultReset,
+}
 
 #[derive(Clone)]
 pub struct SifliToolBase {
     pub port_name: String,
+    pub before: Operation,
     pub chip: String,
     pub memory_type: String,
     pub baud: u32,
@@ -66,8 +75,21 @@ fn attempt_connect(
     } else {
         Some(base_param.connect_attempts)
     };
-    
+
     loop {
+        if base_param.before == Operation::DefaultReset {
+            // 使用RTS引脚复位
+            let mut port = serialport::new(&base_param.port_name, base_param.baud)
+                .dtr_on_open(false)
+                .timeout(Duration::from_secs(5))
+                .open()
+                .unwrap();
+            port.write_data_terminal_ready(false).unwrap();
+            port.write_request_to_send(true).unwrap();
+            std::thread::sleep(Duration::from_millis(100));
+            port.write_request_to_send(false).unwrap();
+            std::thread::sleep(Duration::from_millis(100));
+        }
         let value = probe.open()?.attach(base_param.chip.clone(), Permissions::default());
         // 如果有限重试，检查是否还有机会
         if let Some(ref mut attempts) = remaining_attempts {
@@ -112,9 +134,11 @@ impl SifliTool {
     pub fn new(base_param: SifliToolBase, write_flash_params: Option<WriteFlashParams>) -> Self {
         let step = Self::download_stub(&base_param).unwrap();
         let mut port = serialport::new(&base_param.port_name, 1000000)
+            .preserve_dtr_on_open()
             .timeout(Duration::from_secs(5))
             .open()
             .unwrap();
+        port.write_request_to_send(false).unwrap();
         // Self::run(&port).unwrap();
         // std::thread::sleep(Duration::from_millis(500));
         let buf: [u8; 14] = [
