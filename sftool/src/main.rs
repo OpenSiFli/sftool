@@ -114,7 +114,7 @@ fn main() {
             None
         },
     );
-    
+
     siflitool.download_stub().unwrap();
     
     if args.baud != 1000000 {

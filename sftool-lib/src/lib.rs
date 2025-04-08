@@ -124,13 +124,13 @@ impl SifliTool {
         std::thread::sleep(Duration::from_millis(100));
         let step = 0;
 
-        let mut tool = Self {
+        let tool = Self {
             port,
             step,
             base: base_param,
             write_flash_params,
         };
-        tool.debug_command(SifliUartCommand::Enter).unwrap();
+
         tool
     }
 }
