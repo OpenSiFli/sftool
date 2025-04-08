@@ -1,7 +1,11 @@
 [package]
 name = "sftool-lib"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
+description = "SiFli SoC serial utility library"
+license = "Apache-2.0"
+documentation = "https://docs.rs/sftool-lib"
+repository = "https://github.com/OpenSiFli/sftool"
 
 [lib]
 path = "src/lib.rs"
