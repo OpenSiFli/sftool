@@ -146,6 +146,15 @@ pub trait DownloadStub {
 
 impl SifliTool {
     fn download_stub(&mut self) -> Result<(), std::io::Error> {
+        let spinner = ProgressBar::new_spinner();
+        if !self.base.quiet {
+            spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+            spinner.set_style(ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap());
+            spinner.set_prefix(format!("0x{:02X}", self.step));
+            spinner.set_message("Download stub...");
+        }
+        self.step = self.step.wrapping_add(1);
+        
         /// 1. reset and halt
         ///    1.1. reset_catch_set
         use probe_rs::architecture::arm::core::armv7m::Demcr;
@@ -181,6 +190,9 @@ impl SifliTool {
                 .expect("REASON"),
         );
         let Some(stub) = stub else {
+            if !self.base.quiet {
+                spinner.finish_with_message("No stub file found for the given chip and memory type");
+            }
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 "No stub file found for the given chip and memory type",
@@ -215,6 +227,10 @@ impl SifliTool {
 
         // 3.2. run
         self.debug_run()?;
+
+        if !self.base.quiet {
+            spinner.finish_with_message("Download stub success!");
+        }
 
         Ok(())
     }
@@ -307,7 +323,6 @@ impl DownloadStub for SifliTool {
                 buffer.clear();
             }
             if retry_count > RETRY {
-                eprintln!("Retry count exceeded");
                 return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timeout"));
             }
 
@@ -323,7 +338,6 @@ impl DownloadStub for SifliTool {
                 break;
             }
         }
-
         Ok(())
     }
 }
