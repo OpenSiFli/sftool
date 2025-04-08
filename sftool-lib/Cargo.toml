@@ -6,13 +6,14 @@ edition = "2024"
 [lib]
 path = "src/lib.rs"
 
+[features]
+cli = ["clap"]
+
 [dependencies]
-probe-rs = { git = "https://github.com/probe-rs/probe-rs.git", branch = "master" }
 serialport = "4.7.0"
 rust-embed = { version = "8.6.0", features = ["debug-embed", "compression"] }
 strum = {version = "0.27.1",features = ["derive"]}
 phf = { version = "0.11", features = ["macros"] }
-log = "0.4.26"
 tracing = "0.1.41"
 ihex = "3.0"
 elf = "0.7.4"
@@ -21,5 +22,7 @@ memmap2 = "0.9.5"
 crc = "3.2.1"
 tempfile = "3.17.1"
 indicatif = "0.17.11"
-console = "0.15.11"
 lazy_static = "1.5.0"
+clap = { version = "4.2.1", features = ["derive"], optional = true }
+probe-rs = { version = "0.27.0"}
+bitfield = "0.19.0"

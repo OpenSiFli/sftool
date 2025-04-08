@@ -1,8 +1,9 @@
+use sftool_lib::ram_command::DownloadStub;
 use sftool_lib::reset::Reset;
 use clap::{Parser, Subcommand, ValueEnum};
 use sftool_lib::write_flash::WriteFlashTrait;
 use sftool_lib::speed::SpeedTrait;
-use sftool_lib::{SifliTool, SifliToolBase, WriteFlashParams};
+use sftool_lib::{Operation, SifliTool, SifliToolBase, WriteFlashParams};
 use strum::{Display, EnumString};
 
 #[derive(EnumString, Display, Debug, Clone, ValueEnum)]
@@ -19,14 +20,6 @@ enum Memory {
     Nand,
     #[clap(name = "sd")]
     Sd,
-}
-
-#[derive(Debug, Clone, ValueEnum, PartialEq, Eq)]
-enum Operation {
-    #[clap(name = "no_reset")]
-    None,
-    #[clap(name = "soft_reset")]
-    SoftReset,
 }
 
 #[derive(Parser, Debug)]
@@ -48,8 +41,9 @@ struct Cli {
     #[arg(short = 'b', long = "baud", default_value = "1000000")]
     baud: u32,
 
-    /// What to do before connecting to the chip
-    #[arg(long = "before", value_enum, default_value = "no_reset")]
+    /// What to do before connecting to the chip, `default_reset` uses DTR & RTS serial control lines
+    /// to reset the chip; `soft_reset` uses a soft reset command; `no_reset` does nothing.
+    #[arg(long = "before", value_enum, default_value = "default_reset")]
     before: Operation,
 
     /// What to do after siflitool is finished
@@ -102,6 +96,7 @@ fn main() {
         SifliToolBase {
             port_name: args.port.clone(),
             chip: args.chip.to_string().to_lowercase(),
+            before: args.before,
             memory_type: args.memory.to_string().to_lowercase(),
             quiet: false,
             connect_attempts: args.connect_attempts,
@@ -119,6 +114,8 @@ fn main() {
             None
         },
     );
+
+    siflitool.download_stub().unwrap();
     
     if args.baud != 1000000 {
         siflitool.set_speed(args.baud).unwrap();
