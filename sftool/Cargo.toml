@@ -9,7 +9,7 @@ repository = "https://github.com/OpenSiFli/sftool"
 
 [dependencies]
 clap = { version = "4.5.31", features = ["derive"] }
-sftool-lib = { path = "../sftool-lib" ,features = ["cli"] }
+sftool-lib = { version = "0.1.4" ,path = "../sftool-lib" ,features = ["cli"] }
 strum = {version = "0.27.1",features = ["derive"]}
 tracing-subscriber = "0.3.19"
 tracing = "0.1.41"
