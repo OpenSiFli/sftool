@@ -305,6 +305,7 @@ impl DownloadStub for SifliTool {
 
         std::thread::sleep(std::time::Duration::from_millis(100));
         self.port.clear(serialport::ClearBuffer::All)?;
+        self.debug_command(SifliUartCommand::Exit)?;
 
         // 1s之内串口发b"\r\n"字符串，并等待是否有"msh >"回复，200ms发一次b"\r\n"
         let mut buffer = Vec::new();
