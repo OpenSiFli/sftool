@@ -90,7 +90,16 @@ struct WriteFlash {
     files: Vec<String>,
 }
 
-fn main() {
+fn main() {    // 初始化 tracing，从环境变量设置日志级别
+    // 可通过设置 RUST_LOG 环境变量来控制日志级别，例如:
+    // RUST_LOG=debug, RUST_LOG=sftool_lib=trace, RUST_LOG=info
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("off"));
+    
+    tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .init();
+    
     let args = Cli::parse();
     let mut siflitool = SifliTool::new(
         SifliToolBase {
