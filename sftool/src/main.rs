@@ -5,6 +5,8 @@ use sftool_lib::write_flash::WriteFlashTrait;
 use sftool_lib::speed::SpeedTrait;
 use sftool_lib::{Operation, SifliTool, SifliToolBase, WriteFlashParams};
 use strum::{Display, EnumString};
+use std::process;
+use serialport;
 
 #[derive(EnumString, Display, Debug, Clone, ValueEnum)]
 enum Chip {
@@ -90,17 +92,94 @@ struct WriteFlash {
     files: Vec<String>,
 }
 
-fn main() {    // 初始化 tracing，从环境变量设置日志级别
-    // 可通过设置 RUST_LOG 环境变量来控制日志级别，例如:
+/// Convert macOS /dev/tty.* ports to /dev/cu.* ports
+/// 
+/// On macOS, /dev/tty.* ports should be avoided in favor of /dev/cu.* ports
+/// This function automatically converts any /dev/tty.* path to its /dev/cu.* equivalent
+/// 
+/// # Parameters
+/// * `port_name` - The original port name
+/// 
+/// # Returns
+/// * The corrected port name
+fn normalize_mac_port_name(port_name: &str) -> String {
+    #[cfg(target_os = "macos")]
+    {
+        if port_name.starts_with("/dev/tty.") {
+            return port_name.replace("/dev/tty.", "/dev/cu.");
+        }
+    }
+    port_name.to_string()
+}
+
+/// Check if the specified serial port is available
+/// 
+/// # Parameters
+/// * `port_name` - The name of the serial port to check
+/// 
+/// # Returns
+/// * `Result<(), String>` - Returns Ok(()) if the port is available; otherwise returns an Err with error message
+fn check_port_available(port_name: &str) -> Result<(), String> {
+    match serialport::available_ports() {
+        Ok(ports) => {
+            // On macOS, only use /dev/cu.* ports, not /dev/tty.* ports
+            let filtered_ports: Vec<_> = ports
+                .into_iter()
+                .filter(|p| {
+                    #[cfg(target_os = "macos")]
+                    {
+                        !p.port_name.starts_with("/dev/tty.")
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        true
+                    }
+                })
+                .collect();
+
+            // Check if the specified port is in the available list
+            if filtered_ports.iter().any(|p| p.port_name == port_name) {
+                Ok(())
+            } else {
+                // If the port doesn't exist, return an error and list all available ports
+                let available_ports: Vec<String> = filtered_ports.iter()
+                    .map(|p| p.port_name.clone())
+                    .collect();
+                
+                Err(format!(
+                    "The specified port '{}' does not exist. Available ports: {}", 
+                    port_name, 
+                    if available_ports.is_empty() { 
+                        "No available ports".to_string() 
+                    } else { 
+                        available_ports.join(", ") 
+                    }
+                ))
+            }
+        },
+        Err(e) => Err(format!("Failed to get available ports list: {}", e)),
+    }
+}
+
+fn main() {    // Initialize tracing, set log level from environment variable
+    // Log level can be controlled by setting the RUST_LOG environment variable, e.g.:
     // RUST_LOG=debug, RUST_LOG=sftool_lib=trace, RUST_LOG=info
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("off"));
     
     tracing_subscriber::fmt()
         .with_env_filter(env_filter)
-        .init();
-    
-    let args = Cli::parse();
+        .init();    let mut args = Cli::parse();
+
+    // On macOS, convert /dev/tty.* to /dev/cu.*
+    args.port = normalize_mac_port_name(&args.port);
+
+    // Check if the specified serial port exists, exit early if not
+    if let Err(e) = check_port_available(&args.port) {
+        eprintln!("Error: {}", e);
+        process::exit(1);
+    }
+
     let mut siflitool = SifliTool::new(
         SifliToolBase {
             port_name: args.port.clone(),
@@ -129,8 +208,7 @@ fn main() {    // 初始化 tracing，从环境变量设置日志级别
     if args.baud != 1000000 {
         siflitool.set_speed(args.baud).unwrap();
     }
-    
-    let res = match args.command {
+      let res = match args.command {
         Some(Commands::WriteFlash(_)) => siflitool.write_flash(),
         None => Ok(()),
     };
