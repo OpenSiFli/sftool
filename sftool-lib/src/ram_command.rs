@@ -168,10 +168,10 @@ impl SifliTool {
         let mut aircr = Aircr(0);
         aircr.vectkey();
         aircr.set_sysresetreq(true);
-        self.debug_write_word32(Aircr::get_mmio_address() as u32, aircr.into())?;
+        let _ = self.debug_write_word32(Aircr::get_mmio_address() as u32, aircr.into()); // MCU已经重启，不一定能收到正确回复
 
         // 1.3. Re-enter debug mode
-        let _ = self.debug_command(SifliUartCommand::Enter)?;
+        self.debug_command(SifliUartCommand::Enter)?;
 
         // 1.4. halt
         self.debug_halt()?;
