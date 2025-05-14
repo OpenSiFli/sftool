@@ -1880,9 +1880,9 @@ name = "sftool"
 version = "0.1.5"
 dependencies = [
  "clap",
+ "serialport",
  "sftool-lib",
  "strum 0.27.1",
- "tracing",
  "tracing-subscriber",
 ]
 
