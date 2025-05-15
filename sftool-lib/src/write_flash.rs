@@ -1,4 +1,4 @@
-use crate::SifliTool;
+use crate::{utils, SifliTool, SubcommandParams};
 use crate::ram_command::{Command, RamCommand, Response};
 use crc::Algorithm;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -30,18 +30,6 @@ struct WriteFlashFile {
     address: u32,
     file: File,
     crc32: u32,
-}
-
-fn str_to_u32(s: &str) -> Result<u32, std::num::ParseIntError> {
-    if let Some(hex_digits) = s.strip_prefix("0x") {
-        u32::from_str_radix(hex_digits, 16)
-    } else if let Some(bin_digits) = s.strip_prefix("0b") {
-        u32::from_str_radix(bin_digits, 2)
-    } else if let Some(oct_digits) = s.strip_prefix("0o") {
-        u32::from_str_radix(oct_digits, 8)
-    } else {
-        s.parse::<u32>()
-    }
 }
 
 fn detect_file_type(path: &Path) -> Result<FileType, std::io::Error> {
@@ -301,14 +289,14 @@ impl SifliTool {
 impl WriteFlashTrait for SifliTool {
     fn write_flash(&mut self) -> Result<(), std::io::Error> {
         let mut step = self.step;
-        let params = self
-            .write_flash_params
-            .as_ref()
-            .cloned()
-            .ok_or(std::io::Error::new(
+
+        let SubcommandParams::WriteFlashParams(params) = self.subcommand_params.clone() else {
+            return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "No write flash params",
-            ))?;
+                "Invalid params for write flash",
+            ));
+        };
+
         let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
 
         let packet_size = if self.base.compat { 256 } else { 128 * 1024 };
@@ -318,7 +306,7 @@ impl WriteFlashTrait for SifliTool {
             let parts: Vec<_> = file.split('@').collect();
             // 如果存在@符号，则证明是bin文件
             if parts.len() == 2 {
-                let addr = str_to_u32(parts[1])
+                let addr = utils::Utils::str_to_u32(parts[1])
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
                 let file = File::open(parts[0])?;
                 let crc32 = get_file_crc32(&file.try_clone()?)?;

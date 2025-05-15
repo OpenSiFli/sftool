@@ -4,6 +4,8 @@ pub mod reset;
 mod sifli_debug;
 pub mod speed;
 pub mod write_flash;
+pub mod erase_flash;
+pub mod utils;
 
 use crate::sifli_debug::SifliUartCommand;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -44,15 +46,32 @@ pub struct WriteFlashParams {
     pub erase_all: bool,
 }
 
+#[derive(Clone)]
+pub struct EraseFlashParams {
+    pub address: String,
+}
+
+#[derive(Clone)]
+pub struct EraseRegionParams {
+    pub region: Vec<String>,
+}
+
+#[derive(Clone)]
+pub enum SubcommandParams {
+    WriteFlashParams(WriteFlashParams),
+    EraseFlashParams(EraseFlashParams),
+    EraseRegionParams(EraseRegionParams),
+}
+
 pub struct SifliTool {
     port: Box<dyn SerialPort>,
     base: SifliToolBase,
     step: i32,
-    write_flash_params: Option<WriteFlashParams>,
+    subcommand_params: SubcommandParams,
 }
 
 impl SifliTool {
-    pub fn new(base_param: SifliToolBase, write_flash_params: Option<WriteFlashParams>) -> Self {
+    pub fn new(base_param: SifliToolBase, subcommand_params: SubcommandParams) -> Self {
         let mut port = serialport::new(&base_param.port_name, 1000000)
             .timeout(Duration::from_secs(5))
             .open()
@@ -65,9 +84,17 @@ impl SifliTool {
             port,
             step,
             base: base_param,
-            write_flash_params,
+            subcommand_params,
         };
 
         tool
+    }
+
+    pub fn execute_command(&mut self) -> Result<(), std::io::Error> {
+        match self.subcommand_params {
+            SubcommandParams::WriteFlashParams(_) => write_flash::WriteFlashTrait::write_flash(self),
+            SubcommandParams::EraseFlashParams(_) => erase_flash::EraseFlashTrait::erase_flash(self),
+            SubcommandParams::EraseRegionParams(_) => erase_flash::EraseFlashTrait::erase_region(self),
+        }
     }
 }

@@ -3,7 +3,7 @@ use sftool_lib::reset::Reset;
 use clap::{Parser, Subcommand, ValueEnum};
 use sftool_lib::write_flash::WriteFlashTrait;
 use sftool_lib::speed::SpeedTrait;
-use sftool_lib::{Operation, SifliTool, SifliToolBase, WriteFlashParams};
+use sftool_lib::{Operation, SifliTool, SifliToolBase};
 use strum::{Display, EnumString};
 use std::process;
 use serialport;
@@ -70,6 +70,14 @@ enum Commands {
     /// Write a binary blob to flash
     #[command(name = "write_flash")]
     WriteFlash(WriteFlash),
+
+    /// Erase the entire flash
+    #[command(name = "erase_flash")]
+    EraseFlash(EraseFlash),
+
+    /// Erase a region of the flash
+    #[command(name = "erase_region")]
+    EraseRegion(EraseRegion),
 }
 
 #[derive(Parser, Debug)]
@@ -90,6 +98,22 @@ struct WriteFlash {
     /// Binary file (format: <filename@address>, if file format includes address info, @address is optional)
     #[arg(required = true)]
     files: Vec<String>,
+}
+
+#[derive(Parser, Debug)]
+#[command(about = "Erase flash")]
+struct EraseFlash {
+    /// Erase flash
+    #[arg(required = true)]
+    address: String,
+}
+
+#[derive(Parser, Debug)]
+#[command(about = "Erase a region of the flash")]
+struct EraseRegion {
+    /// Erase region (format: <address:size>)
+    #[arg(required = true)]
+    region: Vec<String>,
 }
 
 /// Convert macOS /dev/tty.* ports to /dev/cu.* ports
@@ -191,15 +215,29 @@ fn main() {    // Initialize tracing, set log level from environment variable
             baud: args.baud,
             compat: args.compat,
         },
-        if let Some(Commands::WriteFlash(ref write_flash)) = args.command {
-            Some(WriteFlashParams {
-                file_path: write_flash.files.clone(),
-                verify: write_flash.verify,
-                no_compress: write_flash.no_compress,
-                erase_all: write_flash.erase_all,
-            })
-        } else {
-            None
+        match args.command {
+            Some(Commands::WriteFlash(ref write_flash)) => {
+                sftool_lib::SubcommandParams::WriteFlashParams(sftool_lib::WriteFlashParams {
+                    file_path: write_flash.files.clone(),
+                    verify: write_flash.verify,
+                    no_compress: write_flash.no_compress,
+                    erase_all: write_flash.erase_all,
+                })
+            }
+            Some(Commands::EraseFlash(ref erase_flash)) => {
+                sftool_lib::SubcommandParams::EraseFlashParams(sftool_lib::EraseFlashParams {
+                    address: erase_flash.address.clone(),
+                })
+            }
+            Some(Commands::EraseRegion(ref erase_region)) => {
+                sftool_lib::SubcommandParams::EraseRegionParams(sftool_lib::EraseRegionParams {
+                    region: erase_region.region.clone(),
+                })
+            }
+            None => {
+                eprintln!("Error: No command specified");
+                process::exit(1);
+            }
         },
     );
 
@@ -211,10 +249,9 @@ fn main() {    // Initialize tracing, set log level from environment variable
     if args.baud != 1000000 {
         siflitool.set_speed(args.baud).unwrap();
     }
-      let res = match args.command {
-        Some(Commands::WriteFlash(_)) => siflitool.write_flash(),
-        None => Ok(()),
-    };
+
+    let res = siflitool.execute_command();
+
     if let Err(e) = res {
         eprintln!("Error: {:?}", e);
     }
