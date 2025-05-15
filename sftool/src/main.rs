@@ -203,7 +203,10 @@ fn main() {    // Initialize tracing, set log level from environment variable
         },
     );
 
-    siflitool.download_stub().unwrap();
+    if let Err(e) = siflitool.download_stub() {
+        eprintln!("Error: {:?}", e);
+        process::exit(1);
+    }
     
     if args.baud != 1000000 {
         siflitool.set_speed(args.baud).unwrap();
