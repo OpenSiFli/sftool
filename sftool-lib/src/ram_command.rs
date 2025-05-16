@@ -55,6 +55,7 @@ const TIMEOUT: u128 = 4000; //ms
 
 impl RamCommand for SifliTool {
     fn command(&mut self, cmd: Command) -> Result<Response, std::io::Error> {
+        tracing::debug!("command: {:?}", cmd);
         self.port.write_all(cmd.to_string().as_bytes())?;
         self.port.flush()?;
         self.port.clear(serialport::ClearBuffer::All)?;
@@ -73,6 +74,7 @@ impl RamCommand for SifliTool {
         loop {
             let elapsed = now.elapsed().unwrap().as_millis();
             if elapsed > timeout {
+                tracing::debug!("Response buffer: {:?}", String::from_utf8_lossy(&buffer));
                 return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timeout"));
             }
 
@@ -91,6 +93,7 @@ impl RamCommand for SifliTool {
                     .windows(response_bytes.len())
                     .any(|window| window == response_bytes);
                 if exists {
+                    tracing::debug!("Response buffer: {:?}", String::from_utf8_lossy(&buffer));
                     return Response::from_str(response_str).map_err(|e| {
                         std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
                     });
