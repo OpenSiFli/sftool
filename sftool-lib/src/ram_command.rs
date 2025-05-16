@@ -18,6 +18,9 @@ pub enum Command {
     #[strum(to_string = "burn_verify 0x{address:08x} 0x{len:08x} 0x{crc:08x}\r")]
     Verify { address: u32, len: u32, crc: u32 },
 
+    #[strum(to_string = "burn_erase 0x{address:08x} 0x{len:08x}\r")]
+    Erase { address: u32, len: u32 },
+
     #[strum(to_string = "burn_erase_write 0x{address:08x} 0x{len:08x}\r")]
     WriteAndErase { address: u32, len: u32 },
 
