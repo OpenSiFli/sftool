@@ -27,6 +27,9 @@ pub enum Command {
     #[strum(to_string = "burn_write 0x{address:08x} 0x{len:08x}\r")]
     Write { address: u32, len: u32 },
 
+    #[strum(to_string = "burn_read 0x{address:08x} 0x{len:08x}\r")]
+    Read { address: u32, len: u32 },
+
     #[strum(to_string = "burn_reset\r")]
     SoftReset,
 
@@ -65,8 +68,10 @@ impl RamCommand for SifliTool {
             _ => TIMEOUT,
         };
 
-        if let Command::SetBaud { .. } = cmd {
-            return Ok(Response::Ok);
+        match cmd {
+            Command::SetBaud { .. } => return Ok(Response::Ok),
+            Command::Read { .. } => return Ok(Response::Ok),
+            _ => (),
         }
 
         let mut buffer = Vec::new();

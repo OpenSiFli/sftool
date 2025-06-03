@@ -1,4 +1,5 @@
 use std::num::ParseIntError;
+use crc::Algorithm;
 
 pub struct Utils;
 impl Utils {
@@ -6,9 +7,9 @@ impl Utils {
         let s = s.trim();
 
         let (num_str, multiplier) = match s.chars().last() {
-            Some('k') | Some('K') => (&s[..s.len()-1], 1_000u32),
-            Some('m') | Some('M') => (&s[..s.len()-1], 1_000_000u32),
-            Some('g') | Some('G') => (&s[..s.len()-1], 1_000_000_000u32),
+            Some('k') | Some('K') => (&s[..s.len() - 1], 1_000u32),
+            Some('m') | Some('M') => (&s[..s.len() - 1], 1_000_000u32),
+            Some('g') | Some('G') => (&s[..s.len() - 1], 1_000_000_000u32),
             _ => (s, 1),
         };
 
@@ -23,5 +24,25 @@ impl Utils {
         };
 
         Ok(unsigned * multiplier)
+    }
+
+    pub fn verify_crc32(data: &[u8], expected_crc: u32) -> bool {
+        const CRC_32_ALGO: Algorithm<u32> = Algorithm {
+            width: 32,
+            poly: 0x04C11DB7,
+            init: 0,
+            refin: true,
+            refout: true,
+            xorout: 0,
+            check: 0x2DFD2D88,
+            residue: 0,
+        };
+
+        let crc = crc::Crc::<u32>::new(&CRC_32_ALGO);
+        let mut digest = crc.digest();
+        digest.update(data);
+        let checksum = digest.finalize();
+
+        checksum == expected_crc
     }
 }

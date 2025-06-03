@@ -4,6 +4,7 @@ pub mod reset;
 mod sifli_debug;
 pub mod speed;
 pub mod write_flash;
+pub mod read_flash;
 pub mod erase_flash;
 pub mod utils;
 
@@ -47,6 +48,11 @@ pub struct WriteFlashParams {
 }
 
 #[derive(Clone)]
+pub struct ReadFlashParams {
+    pub file_path: Vec<String>,
+}
+
+#[derive(Clone)]
 pub struct EraseFlashParams {
     pub address: String,
 }
@@ -59,6 +65,7 @@ pub struct EraseRegionParams {
 #[derive(Clone)]
 pub enum SubcommandParams {
     WriteFlashParams(WriteFlashParams),
+    ReadFlashParams(ReadFlashParams),
     EraseFlashParams(EraseFlashParams),
     EraseRegionParams(EraseRegionParams),
 }
@@ -93,6 +100,7 @@ impl SifliTool {
     pub fn execute_command(&mut self) -> Result<(), std::io::Error> {
         match self.subcommand_params {
             SubcommandParams::WriteFlashParams(_) => write_flash::WriteFlashTrait::write_flash(self),
+            SubcommandParams::ReadFlashParams(_) => read_flash::ReadFlashTrait::read_flash(self),
             SubcommandParams::EraseFlashParams(_) => erase_flash::EraseFlashTrait::erase_flash(self),
             SubcommandParams::EraseRegionParams(_) => erase_flash::EraseFlashTrait::erase_region(self),
         }
