@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::num::ParseIntError;
 use crc::Algorithm;
 
@@ -26,7 +28,7 @@ impl Utils {
         Ok(unsigned * multiplier)
     }
 
-    pub fn verify_crc32(data: &[u8], expected_crc: u32) -> bool {
+    pub(crate) fn get_file_crc32(file: &File) -> Result<u32, std::io::Error> {
         const CRC_32_ALGO: Algorithm<u32> = Algorithm {
             width: 32,
             poly: 0x04C11DB7,
@@ -38,11 +40,22 @@ impl Utils {
             residue: 0,
         };
 
-        let crc = crc::Crc::<u32>::new(&CRC_32_ALGO);
-        let mut digest = crc.digest();
-        digest.update(data);
-        let checksum = digest.finalize();
+        const CRC: crc::Crc<u32> = crc::Crc::<u32>::new(&CRC_32_ALGO);
+        let mut reader = BufReader::new(file);
 
-        checksum == expected_crc
+        let mut digest = CRC.digest();
+
+        let mut buffer = [0u8; 4 * 1024];
+        loop {
+            let n = reader.read(&mut buffer)?;
+            if n == 0 {
+                break;
+            }
+            digest.update(&buffer[..n]);
+        }
+
+        let checksum = digest.finalize();
+        reader.seek(SeekFrom::Start(0))?;
+        Ok(checksum)
     }
 }

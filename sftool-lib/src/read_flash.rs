@@ -2,7 +2,8 @@ use crate::ram_command::{Command, RamCommand, Response};
 use crate::{SifliTool, SubcommandParams, utils};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, Write};
+use tempfile::tempfile;
 
 pub trait ReadFlashTrait {
     fn read_flash(&mut self) -> Result<(), std::io::Error>;
@@ -47,17 +48,6 @@ fn parse_file_info(file_spec: &str) -> Result<ReadFlashFile, std::io::Error> {
     })
 }
 
-fn print_ascii(v: Vec<u8>) {
-    for byte in v {
-        if (byte.is_ascii() && !byte.is_ascii_control()) || byte == 0x0d || byte == 0x0a {
-            print!("{}", byte as char);
-        } else {
-            print!("{:02x} ", byte);
-        }
-    }
-    println!(); // 添加换行以便输出更整洁
-}
-
 impl ReadFlashTrait for SifliTool {
     fn read_flash(&mut self) -> Result<(), std::io::Error> {
         let mut step = self.step;
@@ -92,96 +82,89 @@ impl ReadFlashTrait for SifliTool {
             }
 
             // 发送读取命令
-            let response = self.command(Command::Read {
+            let _ = self.command(Command::Read {
                 address: file.address,
                 len: file.size,
-            })?;
+            });
 
-            if response != Response::Ok {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Failed to initiate read operation",
-                ));
-            }
-
-            let mut received_data = Vec::new();
+            let mut buffer = Vec::new();
 
             let now = std::time::SystemTime::now();
-            let mut tick = now.elapsed().unwrap().as_millis();
 
-            // 通过超时检测来结束数据接收
-            while now.elapsed().unwrap().as_millis() - tick < 100 {
-                let mut buffer = [0u8; 1024];
-                match self.port.read(&mut buffer) {
-                    Ok(n) if n > 0 => {
-                        // 重置计时
-                        tick = now.elapsed().unwrap().as_millis();
+            // 判断是否可以开始读取数据
+            loop {
+                let elapsed = now.elapsed().unwrap().as_millis();
+                if elapsed > 1000 {
+                    tracing::error!("response string is {}", String::from_utf8_lossy(&buffer));
+                    return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timeout"));
+                }
 
-                        // appends data
-                        received_data.extend_from_slice(&buffer[..n]);
+                let mut byte = [0];
+                let ret = self.port.read_exact(&mut byte);
+                if ret.is_err() {
+                    continue;
+                }
+                buffer.push(byte[0]);
 
-                        // 进度条
-                        if !self.base.quiet {
-                            progress_bar.inc(n as u64);
-                        }
-                    }
-                    Ok(_) => continue,
-                    Err(e) => {
-                        if e.kind() == std::io::ErrorKind::TimedOut {
-                            continue;
-                        }
-                        return Err(e);
-                    }
+                // 一旦buffer出现RESPONSE_STR_TABLE中的任意一个，不一定是结束字节，也可能是在buffer中间出现，就认为接收完毕
+                let response_str = "start_trans\r\n";
+                let response_bytes = response_str.as_bytes();
+                let exists = buffer
+                    .windows(response_bytes.len())
+                    .any(|window| window == response_bytes);
+                if exists {
+                    break;
                 }
             }
+            // 接下来都是裸数据
+            let mut current_file = tempfile()?;
+            let mut total_read = 0;
+            while total_read < file.size {
+                const READ_SIZE: usize = 1024;
+                let mut read_buffer = [0; 1024];
+                // 只读file.size 大小
+                let read_size = if file.size - total_read < READ_SIZE as u32 {;
+                    (file.size - total_read) as usize
+                } else {
+                    READ_SIZE
+                };
+                self.port.read_exact(&mut read_buffer[..read_size])?;
+                current_file.write_all(&read_buffer[..read_size])?;
+                total_read += read_size as u32;
 
-            // print_ascii(received_data.clone());
-            // println!("received_data.len={}", received_data.len());
-            // println!("received_data={:02x?}", received_data);
-            // println!("{}", received_data.to_());
-            // 截取结尾30字节
-            let end_str = String::from_utf8_lossy(&received_data[received_data.len() - 30..]);
-
-            // OK
-            if false == end_str.contains("OK") {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Receive fail(lost \"OK\")",
-                ));
-            }
-
-            let data_str = String::from_utf8_lossy(&received_data);
-            let bin_data: Vec<u8>;
-            let crc_str;
-            if let Some(crc_pos) = data_str.find("CRC:0x") {
                 if !self.base.quiet {
-                    progress_bar.finish_with_message("Read complete!");// TODO: 显示问题
+                    progress_bar.inc(read_size as u64);
                 }
-                // 处理数据，只保留CRC之前的部分
-                crc_str = data_str[crc_pos..crc_pos + "CRC:0x".len() + 8].to_string();
-                let data_pos = data_str.find("start_trans").unwrap() + "start_trans".len();
-                bin_data = received_data[data_pos..crc_pos].into();
-            } else {
+            }
+            
+            current_file.seek(std::io::SeekFrom::Start(0))?;
+            let read_file_crc32 = utils::Utils::get_file_crc32(&current_file)?;
+            let mut read_crc_str_bytes = [0u8; 14];
+            self.port.read_exact(&mut read_crc_str_bytes)?;
+            let read_crc_str = String::from_utf8_lossy(&read_crc_str_bytes);
+            let read_crc32 = utils::Utils::str_to_u32(&read_crc_str[4..])
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            if read_file_crc32 != read_crc32 {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    "Receive fail(lost \"CRC\")",
+                    format!(
+                        "CRC mismatch: expected 0x{:08X}, got 0x{:08X}",
+                        read_file_crc32, read_crc32
+                    ),
                 ));
             }
-
-            // 验证CRC
-            if let Ok(expected_crc) = u32::from_str_radix(crc_str.as_str(), 16) {
-                if !utils::Utils::verify_crc32(&bin_data, expected_crc) {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "CRC verif fail",
-                    ));
-                }
-            }
-
-            // 创建输出文件
+            
+            // 将读取的文件保存到指定路径
             let mut output_file = File::create(&file.file_path)?;
-            // 写入文件
-            output_file.write_all(&bin_data)?;
+            current_file.seek(std::io::SeekFrom::Start(0))?;
+            std::io::copy(&mut current_file, &mut output_file)?;
+
+            if !self.base.quiet {
+                progress_bar.finish_with_message(format!(
+                    "Read flash successfully: {} (0x{:08X})",
+                    file.file_path, file.address
+                ));
+            }
         }
 
         Ok(())
