@@ -1,7 +1,6 @@
 use sftool_lib::ram_command::DownloadStub;
 use sftool_lib::reset::Reset;
 use clap::{Parser, Subcommand, ValueEnum};
-use sftool_lib::write_flash::WriteFlashTrait;
 use sftool_lib::speed::SpeedTrait;
 use sftool_lib::{Operation, SifliTool, SifliToolBase};
 use strum::{Display, EnumString};
@@ -71,6 +70,10 @@ enum Commands {
     #[command(name = "write_flash")]
     WriteFlash(WriteFlash),
 
+    /// Read a binary blob from flash
+    #[command(name = "read_flash")]
+    ReadFlash(ReadFlash),
+
     /// Erase the entire flash
     #[command(name = "erase_flash")]
     EraseFlash(EraseFlash),
@@ -96,6 +99,14 @@ struct WriteFlash {
     erase_all: bool,
 
     /// Binary file (format: <filename@address>, if file format includes address info, @address is optional)
+    #[arg(required = true)]
+    files: Vec<String>,
+}
+
+#[derive(Parser, Debug)]
+#[command(about = "Read a binary blob from flash")]
+struct ReadFlash {
+    /// Binary file (format: <filename@address:size>)
     #[arg(required = true)]
     files: Vec<String>,
 }
@@ -222,6 +233,11 @@ fn main() {    // Initialize tracing, set log level from environment variable
                     verify: write_flash.verify,
                     no_compress: write_flash.no_compress,
                     erase_all: write_flash.erase_all,
+                })
+            }
+            Some(Commands::ReadFlash(ref read_flash)) => {
+                sftool_lib::SubcommandParams::ReadFlashParams(sftool_lib::ReadFlashParams {
+                    file_path: read_flash.files.clone(),
                 })
             }
             Some(Commands::EraseFlash(ref erase_flash)) => {

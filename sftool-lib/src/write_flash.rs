@@ -105,7 +105,7 @@ fn hex_to_bin(hex_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
             }
             ihex::Record::EndOfFile => {
                 temp_file.seek(SeekFrom::Start(0))?;
-                let crc32 = get_file_crc32(&temp_file.try_clone()?)?;
+                let crc32 = utils::Utils::get_file_crc32(&temp_file.try_clone()?)?;
                 write_flash_files.push(WriteFlashFile {
                     address,
                     file: temp_file.try_clone()?,
@@ -155,7 +155,7 @@ fn elf_to_bin(elf_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
         // 如果超出了当前对齐块，创建新文件
         if segment_base > current_base + current_offset {
             current_file.seek(std::io::SeekFrom::Start(0))?;
-            let crc32 = get_file_crc32(&current_file)?;
+            let crc32 = utils::Utils::get_file_crc32(&current_file)?;
             write_flash_files.push(WriteFlashFile {
                 address: current_base,
                 file: std::mem::replace(&mut current_file, tempfile()?),
@@ -183,7 +183,7 @@ fn elf_to_bin(elf_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
     // 处理最后一个bin文件
     if current_offset > 0 {      
         current_file.seek(std::io::SeekFrom::Start(0))?;
-        let crc32 = get_file_crc32(&current_file)?;
+        let crc32 = utils::Utils::get_file_crc32(&current_file)?;
         write_flash_files.push(WriteFlashFile {
             address: current_base,
             file: current_file,
@@ -192,37 +192,6 @@ fn elf_to_bin(elf_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
     }
 
     Ok(write_flash_files)
-}
-
-fn get_file_crc32(file: &File) -> Result<u32, std::io::Error> {
-    const CRC_32_ALGO: Algorithm<u32> = Algorithm {
-        width: 32,
-        poly: 0x04C11DB7,
-        init: 0,
-        refin: true,
-        refout: true,
-        xorout: 0,
-        check: 0x2DFD2D88,
-        residue: 0,
-    };
-
-    const CRC: crc::Crc<u32> = crc::Crc::<u32>::new(&CRC_32_ALGO);
-    let mut reader = BufReader::new(file);
-
-    let mut digest = CRC.digest();
-
-    let mut buffer = [0u8; 4 * 1024];
-    loop {
-        let n = reader.read(&mut buffer)?;
-        if n == 0 {
-            break;
-        }
-        digest.update(&buffer[..n]);
-    }
-
-    let checksum = digest.finalize();
-    reader.seek(SeekFrom::Start(0))?;
-    Ok(checksum)
 }
 
 lazy_static! {
@@ -309,7 +278,7 @@ impl WriteFlashTrait for SifliTool {
                 let addr = utils::Utils::str_to_u32(parts[1])
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
                 let file = File::open(parts[0])?;
-                let crc32 = get_file_crc32(&file.try_clone()?)?;
+                let crc32 = utils::Utils::get_file_crc32(&file.try_clone()?)?;
                 write_flash_files.push(WriteFlashFile {
                     address: addr,
                     file,
