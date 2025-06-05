@@ -6,8 +6,10 @@ pub mod erase_flash;
 pub mod ram_command;
 pub mod reset;
 pub mod speed;
+pub mod sifli_debug;
 
 use crate::{SifliToolBase, SubcommandParams, SifliTool};
+use self::sifli_debug::SifliDebug;
 use serialport::SerialPort;
 use std::time::Duration;
 
@@ -68,36 +70,9 @@ impl SifliTool for SF32LB52Tool {
         }
     }
     
-    fn debug_command(&mut self, cmd: crate::sifli_debug::SifliUartCommand) -> Result<crate::sifli_debug::SifliUartResponse, std::io::Error> {
-        crate::sifli_debug::SifliDebug::debug_command(self, cmd)
-    }
-    
-    fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<(), std::io::Error> {
-        crate::sifli_debug::SifliDebug::debug_write_word32(self, addr, data)
-    }
-    
-    fn debug_read_word32(&mut self, addr: u32) -> Result<u32, std::io::Error> {
-        crate::sifli_debug::SifliDebug::debug_read_word32(self, addr)
-    }
-    
-    fn debug_write_core_reg(&mut self, reg: u16, data: u32) -> Result<(), std::io::Error> {
-        crate::sifli_debug::SifliDebug::debug_write_core_reg(self, reg, data)
-    }
-    
-    fn debug_run(&mut self) -> Result<(), std::io::Error> {
-        crate::sifli_debug::SifliDebug::debug_run(self)
-    }
-    
-    fn debug_halt(&mut self) -> Result<(), std::io::Error> {
-        crate::sifli_debug::SifliDebug::debug_halt(self)
-    }
-    
-    fn debug_write_memory(&mut self, addr: u32, data: &[u8]) -> Result<(), std::io::Error> {
-        crate::sifli_debug::SifliDebug::debug_write_memory(self, addr, data)
-    }
     
     fn attempt_connect(&mut self) -> Result<(), std::io::Error> {
-        use crate::sifli_debug::{SifliUartCommand, SifliUartResponse};
+        use self::sifli_debug::{SifliUartCommand, SifliUartResponse};
         use crate::Operation;
         
         let infinite_attempts = self.base.connect_attempts <= 0;
@@ -164,7 +139,7 @@ impl SifliTool for SF32LB52Tool {
     
     fn download_stub_impl(&mut self) -> Result<(), std::io::Error> {
         use indicatif::{ProgressBar, ProgressStyle};
-        use crate::sifli_debug::SifliUartCommand;
+        use self::sifli_debug::SifliUartCommand;
         use crate::ram_stub::{self, CHIP_FILE_NAME};
         use probe_rs::{MemoryMappedRegister};
         use probe_rs::architecture::arm::core::armv7m::{Demcr, Aircr};

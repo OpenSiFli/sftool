@@ -48,34 +48,6 @@ impl SifliTool for SF32LB56Tool {
         todo!("SF32LB56 execute_command implementation")
     }
     
-    fn debug_command(&mut self, _cmd: crate::sifli_debug::SifliUartCommand) -> Result<crate::sifli_debug::SifliUartResponse, std::io::Error> {
-        todo!("SF32LB56 debug_command implementation")
-    }
-    
-    fn debug_write_word32(&mut self, _addr: u32, _data: u32) -> Result<(), std::io::Error> {
-        todo!("SF32LB56 debug_write_word32 implementation")
-    }
-    
-    fn debug_read_word32(&mut self, _addr: u32) -> Result<u32, std::io::Error> {
-        todo!("SF32LB56 debug_read_word32 implementation")
-    }
-    
-    fn debug_write_core_reg(&mut self, _reg: u16, _data: u32) -> Result<(), std::io::Error> {
-        todo!("SF32LB56 debug_write_core_reg implementation")
-    }
-    
-    fn debug_run(&mut self) -> Result<(), std::io::Error> {
-        todo!("SF32LB56 debug_run implementation")
-    }
-    
-    fn debug_halt(&mut self) -> Result<(), std::io::Error> {
-        todo!("SF32LB56 debug_halt implementation")
-    }
-    
-    fn debug_write_memory(&mut self, _addr: u32, _data: &[u8]) -> Result<(), std::io::Error> {
-        todo!("SF32LB56 debug_write_memory implementation")
-    }
-    
     fn attempt_connect(&mut self) -> Result<(), std::io::Error> {
         todo!("SF32LB56 attempt_connect implementation")
     }

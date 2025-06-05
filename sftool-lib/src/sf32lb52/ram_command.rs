@@ -1,5 +1,5 @@
 use crate::sf32lb52::SF32LB52Tool;
-use crate::sifli_debug::SifliUartCommand;
+use crate::sf32lb52::sifli_debug::{SifliUartCommand, SifliDebug};
 use crate::SifliTool;
 use std::io::{Read, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -140,7 +140,7 @@ impl DownloadStub for SF32LB52Tool {
 
         std::thread::sleep(std::time::Duration::from_millis(100));
         self.port().clear(serialport::ClearBuffer::All)?;
-        SifliTool::debug_command(self, SifliUartCommand::Exit)?;
+        self.debug_command(SifliUartCommand::Exit)?;
 
         // 1s之内串口发b"\r\n"字符串，并等待是否有"msh >"回复，200ms发一次b"\r\n"
         let mut buffer = Vec::new();

@@ -1,6 +1,5 @@
 mod ram_stub;
 pub mod reset;
-mod sifli_debug;
 pub mod speed;
 pub mod write_flash;
 pub mod read_flash;
@@ -93,15 +92,6 @@ pub trait SifliTool {
     
     /// 执行命令
     fn execute_command(&mut self) -> Result<(), std::io::Error>;
-    
-    /// Debug command interface methods
-    fn debug_command(&mut self, cmd: sifli_debug::SifliUartCommand) -> Result<sifli_debug::SifliUartResponse, std::io::Error>;
-    fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<(), std::io::Error>;
-    fn debug_read_word32(&mut self, addr: u32) -> Result<u32, std::io::Error>;
-    fn debug_write_core_reg(&mut self, reg: u16, data: u32) -> Result<(), std::io::Error>;
-    fn debug_run(&mut self) -> Result<(), std::io::Error>;
-    fn debug_halt(&mut self) -> Result<(), std::io::Error>;
-    fn debug_write_memory(&mut self, addr: u32, data: &[u8]) -> Result<(), std::io::Error>;
     
     /// High-level operations
     fn attempt_connect(&mut self) -> Result<(), std::io::Error>;
