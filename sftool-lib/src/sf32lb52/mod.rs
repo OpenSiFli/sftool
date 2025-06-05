@@ -1,5 +1,9 @@
 //! SF32LB52 芯片特定实现模块
 
+pub mod write_flash;
+pub mod read_flash;
+pub mod erase_flash;
+
 use crate::{SifliToolBase, SubcommandParams, SifliTool};
 use serialport::SerialPort;
 use std::time::Duration;
