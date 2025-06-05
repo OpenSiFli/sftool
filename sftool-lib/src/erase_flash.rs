@@ -8,9 +8,9 @@ pub trait EraseFlashTrait {
     fn erase_region(&mut self) -> Result<(), std::io::Error>;
 }
 
-impl EraseFlashTrait for SifliTool {
+impl<T: SifliTool + RamCommand> EraseFlashTrait for T {
     fn erase_flash(&mut self) -> Result<(), std::io::Error> {
-        let SubcommandParams::EraseFlashParams(params) = self.subcommand_params.clone() else {
+        let SubcommandParams::EraseFlashParams(params) = self.subcommand_params().clone() else {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "Invalid params for erase flash",
@@ -22,12 +22,12 @@ impl EraseFlashTrait for SifliTool {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
         let spinner = ProgressBar::new_spinner();
-        if !self.base.quiet {
+        if !self.base().quiet {
             spinner.enable_steady_tick(Duration::from_millis(100));
             spinner
                 .set_style(ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap());
-            spinner.set_prefix(format!("0x{:02X}", self.step));
-            self.step = self.step.wrapping_add(1);
+            spinner.set_prefix(format!("0x{:02X}", self.step()));
+            *self.step_mut() = self.step().wrapping_add(1);
             spinner.set_message(format!("Erasing flash at 0x{:08X} ...", address));
         }
 
@@ -36,7 +36,7 @@ impl EraseFlashTrait for SifliTool {
         })?;
 
         if response != Response::Ok {
-            if !self.base.quiet {
+            if !self.base().quiet {
                 spinner.finish_with_message("Failed to erase flash");
             }
             return Err(std::io::Error::new(
@@ -44,14 +44,14 @@ impl EraseFlashTrait for SifliTool {
                 "Failed to erase flash",
             ));
         }
-        if !self.base.quiet {
+        if !self.base().quiet {
             spinner.finish_with_message("Flash erased successfully");
         }
         Ok(())
     }
 
     fn erase_region(&mut self) -> Result<(), std::io::Error> {
-        let SubcommandParams::EraseRegionParams(params) = self.subcommand_params.clone() else {
+        let SubcommandParams::EraseRegionParams(params) = self.subcommand_params().clone() else {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "Invalid params for erase region",
@@ -79,12 +79,12 @@ impl EraseFlashTrait for SifliTool {
 
         for (address, len) in regions {
             let spinner = ProgressBar::new_spinner();
-            if !self.base.quiet {
+            if !self.base().quiet {
                 spinner.enable_steady_tick(Duration::from_millis(100));
                 spinner
                     .set_style(ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap());
-                spinner.set_prefix(format!("0x{:02X}", self.step));
-                self.step = self.step.wrapping_add(1);
+                spinner.set_prefix(format!("0x{:02X}", self.step()));
+                *self.step_mut() = self.step().wrapping_add(1);
                 spinner.set_message(format!("Erasing 0x{:08X} region at address 0x{:08X} ...", len, address));
             }
 
@@ -94,7 +94,7 @@ impl EraseFlashTrait for SifliTool {
             })?;
 
             if response != Response::Ok {
-                if !self.base.quiet {
+                if !self.base().quiet {
                     spinner.finish_with_message(format!("Failed to erase 0x{:08X} region at address 0x{:08X}", len, address));
                 }
                 return Err(std::io::Error::new(
@@ -102,7 +102,7 @@ impl EraseFlashTrait for SifliTool {
                     format!("Failed to erase region: {}:{}", address, len),
                 ));
             }
-            if !self.base.quiet {
+            if !self.base().quiet {
                 spinner.finish_with_message(format!("Erasing region successfully: 0x{:08X}", address));
             }
         }

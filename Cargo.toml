@@ -9,6 +9,7 @@ repository = "https://github.com/OpenSiFli/sftool"
 readme = "README.md"
 
 [workspace]
+resolver = "2"
 members = [
     "sftool-lib",
     "sftool",

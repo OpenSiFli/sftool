@@ -1,13 +1,9 @@
 use crate::{utils, SifliTool, SubcommandParams};
-use crate::ram_command::{Command, RamCommand, Response};
-use crc::Algorithm;
 use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use memmap2::Mmap;
-use phf::phf_map;
 use std::cmp::PartialEq;
 use std::collections::HashMap;
-use std::fmt::format;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -61,7 +57,7 @@ fn hex_to_bin(hex_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
     let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
 
     let file = std::fs::File::open(hex_file)?;
-    let mut reader = std::io::BufReader::new(file);
+    let reader = std::io::BufReader::new(file);
 
     let mut address = 0;
     let mut temp_file = tempfile()?;
@@ -202,14 +198,18 @@ lazy_static! {
     };
 }
 
-impl SifliTool {
-    fn erase_all(
-        &mut self,
+pub struct WriteFlashHelper;
+
+impl WriteFlashHelper {
+    fn erase_all<T: SifliTool + crate::ram_command::RamCommand>(
+        tool: &mut T,
         write_flash_files: &[WriteFlashFile],
         step: &mut i32,
     ) -> Result<(), std::io::Error> {
+        use crate::ram_command::Command;
+        
         let spinner = ProgressBar::new_spinner();
-        if !self.base.quiet {
+        if !tool.base().quiet {
             spinner.enable_steady_tick(std::time::Duration::from_millis(100));
             spinner.set_style(ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap());
             spinner.set_prefix(format!("0x{:02X}", step));
@@ -223,31 +223,39 @@ impl SifliTool {
             if erase_address.contains(&address) {
                 continue;
             }
-            self.command(Command::EraseAll { address: f.address })?;
+            tool.command(Command::EraseAll { address: f.address })?;
             erase_address.push(address);
         }
-        if !self.base.quiet {
+        if !tool.base().quiet {
             spinner.finish_with_message("All flash regions erased");
         }
         Ok(())
     }
 
-    fn verify(&mut self, address: u32, len: u32, crc: u32, step: &mut i32) -> Result<(), std::io::Error> {
+    fn verify<T: SifliTool + crate::ram_command::RamCommand>(
+        tool: &mut T,
+        address: u32,
+        len: u32,
+        crc: u32,
+        step: &mut i32,
+    ) -> Result<(), std::io::Error> {
+        use crate::ram_command::Command;
+        
         let spinner = ProgressBar::new_spinner();
-        if !self.base.quiet {
+        if !tool.base().quiet {
             spinner.enable_steady_tick(std::time::Duration::from_millis(100));
             spinner.set_style(ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap());
             spinner.set_prefix(format!("0x{:02X}", step));
             spinner.set_message("Verifying data...");
         }
-        let response = self.command(Command::Verify { address, len, crc })?;
-        if response != Response::Ok {
+        let response = tool.command(Command::Verify { address, len, crc })?;
+        if response != crate::ram_command::Response::Ok {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Verify failed",
             ));
         }
-        if !self.base.quiet {
+        if !tool.base().quiet {
             spinner.finish_with_message("Verify success!");
         }
         *step = step.wrapping_add(1);
@@ -255,11 +263,11 @@ impl SifliTool {
     }
 }
 
-impl WriteFlashTrait for SifliTool {
-    fn write_flash(&mut self) -> Result<(), std::io::Error> {
-        let mut step = self.step;
+impl<T: SifliTool + crate::ram_command::RamCommand> WriteFlashTrait for T {
+    fn write_flash(&mut self) -> Result<(), std::io::Error> {        
+        let mut step = *self.step_mut();
 
-        let SubcommandParams::WriteFlashParams(params) = self.subcommand_params.clone() else {
+        let SubcommandParams::WriteFlashParams(params) = self.subcommand_params().clone() else {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "Invalid params for write flash",
@@ -268,7 +276,7 @@ impl WriteFlashTrait for SifliTool {
 
         let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
 
-        let packet_size = if self.base.compat { 256 } else { 128 * 1024 };
+        let packet_size = if self.base().compat { 256 } else { 128 * 1024 };
 
         for file in params.file_path.iter() {
             // file@address
@@ -306,7 +314,7 @@ impl WriteFlashTrait for SifliTool {
         }
 
         if params.erase_all {
-            self.erase_all(&write_flash_files, &mut step)?;
+            WriteFlashHelper::erase_all(self, &write_flash_files, &mut step)?;
         }
 
         for file in write_flash_files.iter() {
@@ -319,7 +327,7 @@ impl WriteFlashTrait for SifliTool {
                 .progress_chars("=>-");
 
             if !params.erase_all {
-                if !self.base.quiet {
+                if !self.base().quiet {
                     re_download_spinner.enable_steady_tick(std::time::Duration::from_millis(100));
                     re_download_spinner.set_style(
                         ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap(),
@@ -331,18 +339,18 @@ impl WriteFlashTrait for SifliTool {
                     ));
                     step += 1;
                 }
-                let response = self.command(Command::Verify {
+                let response = self.command(crate::ram_command::Command::Verify {
                     address: file.address,
                     len: file.file.metadata()?.len() as u32,
                     crc: file.crc32,
                 })?;
-                if response == Response::Ok {
-                    if !self.base.quiet {
+                if response == crate::ram_command::Response::Ok {
+                    if !self.base().quiet {
                         re_download_spinner.finish_with_message("No need to re-download, skip!");
                     }
                     continue;
                 }
-                if !self.base.quiet {
+                if !self.base().quiet {
                     re_download_spinner.finish_with_message("Need to re-download");
 
                     download_bar.set_style(download_bar_template);
@@ -351,11 +359,11 @@ impl WriteFlashTrait for SifliTool {
                     step += 1;
                 }
 
-                let res = self.command(Command::WriteAndErase {
+                let res = self.command(crate::ram_command::Command::WriteAndErase {
                     address: file.address,
                     len: file.file.metadata()?.len() as u32,
                 })?;
-                if res != Response::RxWait {
+                if res != crate::ram_command::Response::RxWait {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
                         "Write flash failed",
@@ -371,13 +379,13 @@ impl WriteFlashTrait for SifliTool {
                         break;
                     }
                     let res = self.send_data(&buffer[..bytes_read])?;
-                    if res == Response::RxWait {
-                        if !self.base.quiet {
+                    if res == crate::ram_command::Response::RxWait {
+                        if !self.base().quiet {
                             download_bar.inc(bytes_read as u64);
                             // downloaded += bytes_read;
                         }
                         continue;
-                    } else if res != Response::Ok {
+                    } else if res != crate::ram_command::Response::Ok {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::InvalidData,
                             "Write flash failed",
@@ -385,14 +393,14 @@ impl WriteFlashTrait for SifliTool {
                     }
                 }
 
-                if !self.base.quiet {
+                if !self.base().quiet {
                     download_bar.finish_with_message("Download success!");
                 }
             } else {
                 let mut buffer = vec![0u8; packet_size];
                 let mut reader = BufReader::new(&file.file);
 
-                if !self.base.quiet {
+                if !self.base().quiet {
                     download_bar.set_style(download_bar_template);
                     download_bar.set_message(format!("0x{:08X}", file.address));
                     download_bar.set_prefix(format!("0x{:02X}", step));
@@ -405,36 +413,39 @@ impl WriteFlashTrait for SifliTool {
                     if bytes_read == 0 {
                         break;
                     }
-                    self.port.write_all(
-                        Command::Write {
+                    self.port().write_all(
+                        crate::ram_command::Command::Write {
                             address: address,
                             len: bytes_read as u32,
                         }
                             .to_string()
                             .as_bytes(),
                     )?;
-                    self.port.flush()?;
+                    self.port().flush()?;
                     let res = self.send_data(&buffer[..bytes_read])?;
-                    if res != Response::Ok {
+                    if res != crate::ram_command::Response::Ok {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::InvalidData,
                             "Write flash failed",
                         ));
                     }
                     address += bytes_read as u32;
-                    if !self.base.quiet {
+                    if !self.base().quiet {
                         download_bar.inc(bytes_read as u64);
                     }
                 }
-                if !self.base.quiet {
+                if !self.base().quiet {
                     download_bar.finish_with_message("Download success!");
                 }
             }
             // verify
             if params.verify {
-                self.verify(file.address, file.file.metadata()?.len() as u32, file.crc32, &mut step)?;
+                WriteFlashHelper::verify(self, file.address, file.file.metadata()?.len() as u32, file.crc32, &mut step)?;
             }
         }
+        
+        // Update the step counter
+        *self.step_mut() = step;
         Ok(())
     }
 }
