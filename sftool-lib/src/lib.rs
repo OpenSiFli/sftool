@@ -1,20 +1,17 @@
-pub mod ram_command;
 mod ram_stub;
 pub mod reset;
-mod sifli_debug;
 pub mod speed;
 pub mod write_flash;
 pub mod read_flash;
 pub mod erase_flash;
 pub mod utils;
 
-use crate::sifli_debug::SifliUartCommand;
-use indicatif::{ProgressBar, ProgressStyle};
-use ram_stub::CHIP_FILE_NAME;
+// 芯片特定的实现模块
+pub mod sf32lb52;
+pub mod sf32lb56;
+pub mod sf32lb58;
+
 use serialport::SerialPort;
-use std::env;
-use std::io::Write;
-use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
@@ -27,11 +24,17 @@ pub enum Operation {
     DefaultReset,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChipType {
+    SF32LB52,
+    SF32LB56,
+    SF32LB58,
+}
+
 #[derive(Clone)]
 pub struct SifliToolBase {
     pub port_name: String,
     pub before: Operation,
-    pub chip: String,
     pub memory_type: String,
     pub baud: u32,
     pub connect_attempts: i8,
@@ -70,39 +73,47 @@ pub enum SubcommandParams {
     EraseRegionParams(EraseRegionParams),
 }
 
-pub struct SifliTool {
-    port: Box<dyn SerialPort>,
-    base: SifliToolBase,
-    step: i32,
+/// 核心的 SifliTool trait，定义了所有芯片实现必须提供的接口
+pub trait SifliTool {
+    /// 获取串口的可变引用
+    fn port(&mut self) -> &mut Box<dyn SerialPort>;
+    
+    /// 获取基础配置的引用
+    fn base(&self) -> &SifliToolBase;
+    
+    /// 获取当前步骤
+    fn step(&self) -> i32;
+    
+    /// 获取当前步骤的可变引用
+    fn step_mut(&mut self) -> &mut i32;
+    
+    /// 获取子命令参数的引用
+    fn subcommand_params(&self) -> &SubcommandParams;
+    
+    /// 执行命令
+    fn execute_command(&mut self) -> Result<(), std::io::Error>;
+    
+    /// High-level operations
+    fn attempt_connect(&mut self) -> Result<(), std::io::Error>;
+    fn download_stub_impl(&mut self) -> Result<(), std::io::Error>;
+    
+    /// Additional operation methods that need to be trait object safe
+    fn download_stub(&mut self) -> Result<(), std::io::Error>;
+    fn set_speed(&mut self, baud: u32) -> Result<(), std::io::Error>;
+    fn soft_reset(&mut self) -> Result<(), std::io::Error>;
+}
+
+/// 工厂函数，根据芯片类型创建对应的 SifliTool 实现
+pub fn create_sifli_tool(
+    chip_type: ChipType,
+    base_param: SifliToolBase,
     subcommand_params: SubcommandParams,
-}
-
-impl SifliTool {
-    pub fn new(base_param: SifliToolBase, subcommand_params: SubcommandParams) -> Self {
-        let mut port = serialport::new(&base_param.port_name, 1000000)
-            .timeout(Duration::from_secs(5))
-            .open()
-            .unwrap();
-        port.write_request_to_send(false).unwrap();
-        std::thread::sleep(Duration::from_millis(100));
-        let step = 0;
-
-        let tool = Self {
-            port,
-            step,
-            base: base_param,
-            subcommand_params,
-        };
-
-        tool
-    }
-
-    pub fn execute_command(&mut self) -> Result<(), std::io::Error> {
-        match self.subcommand_params {
-            SubcommandParams::WriteFlashParams(_) => write_flash::WriteFlashTrait::write_flash(self),
-            SubcommandParams::ReadFlashParams(_) => read_flash::ReadFlashTrait::read_flash(self),
-            SubcommandParams::EraseFlashParams(_) => erase_flash::EraseFlashTrait::erase_flash(self),
-            SubcommandParams::EraseRegionParams(_) => erase_flash::EraseFlashTrait::erase_region(self),
-        }
+) -> Box<dyn SifliTool> {
+    match chip_type {
+        ChipType::SF32LB52 => sf32lb52::SF32LB52Tool::new(base_param, subcommand_params),
+        ChipType::SF32LB56 => sf32lb56::SF32LB56Tool::new(base_param, subcommand_params),
+        ChipType::SF32LB58 => sf32lb58::SF32LB58Tool::new(base_param, subcommand_params),
     }
 }
+
+    
