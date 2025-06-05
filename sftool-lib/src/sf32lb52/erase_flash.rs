@@ -6,7 +6,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 impl EraseFlashTrait for SF32LB52Tool {
     fn erase_flash(&mut self) -> Result<(), std::io::Error> {
-        let mut step = self.step();
+        let step = self.step();
 
         let SubcommandParams::EraseFlashParams(params) = self.subcommand_params().clone() else {
             return Err(std::io::Error::new(

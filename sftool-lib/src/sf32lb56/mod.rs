@@ -8,7 +8,6 @@ pub mod speed;
 
 use crate::{SifliToolBase, SubcommandParams, SifliTool};
 use serialport::SerialPort;
-use std::time::Duration;
 
 pub struct SF32LB56Tool {
     pub base: SifliToolBase,
