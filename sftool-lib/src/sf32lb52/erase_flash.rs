@@ -1,4 +1,4 @@
-use crate::ram_command::{Command, RamCommand};
+use super::ram_command::{Command, RamCommand};
 use crate::{SifliTool, SubcommandParams, utils};
 use crate::erase_flash::EraseFlashTrait;
 use super::SF32LB52Tool;

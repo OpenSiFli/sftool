@@ -1,4 +1,3 @@
-pub mod ram_command;
 mod ram_stub;
 pub mod reset;
 mod sifli_debug;

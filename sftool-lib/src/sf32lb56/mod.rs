@@ -3,6 +3,8 @@
 pub mod write_flash;
 pub mod read_flash;
 pub mod erase_flash;
+pub mod reset;
+pub mod speed;
 
 use crate::{SifliToolBase, SubcommandParams, SifliTool};
 use serialport::SerialPort;
@@ -17,19 +19,7 @@ pub struct SF32LB56Tool {
 
 impl SF32LB56Tool {
     pub fn new(base: SifliToolBase, subcommand_params: SubcommandParams) -> Box<dyn SifliTool> {
-        let mut port = serialport::new(&base.port_name, 1000000)
-            .timeout(Duration::from_secs(5))
-            .open()
-            .unwrap();
-        port.write_request_to_send(false).unwrap();
-        std::thread::sleep(Duration::from_millis(100));
-        
-        Box::new(Self {
-            base,
-            port,
-            step: 0,
-            subcommand_params,
-        })
+        todo!("SF32LB56Tool::new not implemented yet");
     }
 }
 
@@ -107,12 +97,4 @@ impl SifliTool for SF32LB56Tool {
     }
 }
 
-impl crate::ram_command::RamCommand for SF32LB56Tool {
-    fn command(&mut self, _cmd: crate::ram_command::Command) -> Result<crate::ram_command::Response, std::io::Error> {
-        todo!("SF32LB56Tool::command not implemented yet")
-    }
 
-    fn send_data(&mut self, _data: &[u8]) -> Result<crate::ram_command::Response, std::io::Error> {
-        todo!("SF32LB56Tool::send_data not implemented yet")
-    }
-}

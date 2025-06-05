@@ -1,4 +1,4 @@
-use crate::ram_command::{Command, RamCommand};
+use super::ram_command::{Command, RamCommand};
 use crate::{SifliTool, SubcommandParams, utils};
 use crate::read_flash::ReadFlashTrait;
 use super::SF32LB52Tool;

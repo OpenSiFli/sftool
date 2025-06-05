@@ -3,6 +3,9 @@
 pub mod write_flash;
 pub mod read_flash;
 pub mod erase_flash;
+pub mod ram_command;
+pub mod reset;
+pub mod speed;
 
 use crate::{SifliToolBase, SubcommandParams, SifliTool};
 use serialport::SerialPort;
@@ -256,7 +259,7 @@ impl SifliTool for SF32LB52Tool {
     }
     
     fn download_stub(&mut self) -> Result<(), std::io::Error> {
-        use crate::ram_command::DownloadStub;
+        use self::ram_command::DownloadStub;
         DownloadStub::download_stub(self)
     }
     
@@ -268,119 +271,5 @@ impl SifliTool for SF32LB52Tool {
     fn soft_reset(&mut self) -> Result<(), std::io::Error> {
         use crate::reset::Reset;
         Reset::soft_reset(self)
-    }
-}
-
-impl crate::ram_command::RamCommand for SF32LB52Tool {
-    fn command(&mut self, cmd: crate::ram_command::Command) -> Result<crate::ram_command::Response, std::io::Error> {
-        use crate::ram_command::RESPONSE_STR_TABLE;
-        use std::io::{Read, Write};
-        use std::time::{SystemTime, UNIX_EPOCH};
-        
-        const TIMEOUT: u128 = 4000; // ms
-        
-        self.port.write_all(cmd.to_string().as_bytes())?;
-        self.port.flush()?;
-        
-        let mut buffer = Vec::new();
-        let start_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
-        
-        let mut byte = [0];
-        
-        loop {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_millis();
-            if now - start_time > TIMEOUT {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Timeout waiting for command response",
-                ));
-            }
-            
-            if self.port.read_exact(&mut byte).is_ok() {
-                buffer.push(byte[0]);
-                if buffer.len() >= 2 && buffer.ends_with(b"\r\n") {
-                    break;
-                }
-            }
-        }
-        
-        // Remove \r\n from the end
-        if buffer.len() >= 2 {
-            buffer.truncate(buffer.len() - 2);
-        }
-        
-        let response_str = String::from_utf8_lossy(&buffer);
-        for &expected in &RESPONSE_STR_TABLE {
-            if response_str == expected {
-                return Ok(expected.parse().unwrap());
-            }
-        }
-        
-        Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("Unknown response: {}", response_str),
-        ))
-    }
-
-    fn send_data(&mut self, data: &[u8]) -> Result<crate::ram_command::Response, std::io::Error> {
-        use crate::ram_command::RESPONSE_STR_TABLE;
-        use std::io::{Read, Write};
-        use std::time::{SystemTime, UNIX_EPOCH};
-        
-        const TIMEOUT: u128 = 4000; // ms
-        
-        self.port.write_all(data)?;
-        self.port.flush()?;
-        
-        let mut buffer = Vec::new();
-        let start_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
-        
-        let mut byte = [0];
-        
-        loop {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_millis();
-            if now - start_time > TIMEOUT {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Timeout waiting for send_data response",
-                ));
-            }
-            
-            if self.port.read_exact(&mut byte).is_ok() {
-                buffer.push(byte[0]);
-                if buffer.len() >= 2 && buffer.ends_with(b"\r\n") {
-                    break;
-                }
-            }
-        }
-        
-        // Remove \r\n from the end
-        if buffer.len() >= 2 {
-            buffer.truncate(buffer.len() - 2);
-        }
-        
-        let response_str = String::from_utf8_lossy(&buffer);
-        for &expected in &RESPONSE_STR_TABLE {
-            if response_str == expected {
-                return Ok(expected.parse().unwrap());
-            }
-        }
-        
-        Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("Unknown response: {}", response_str),
-        ))
     }
 }
