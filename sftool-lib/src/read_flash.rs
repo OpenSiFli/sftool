@@ -1,5 +1,6 @@
 use crate::ram_command::{Command, RamCommand, Response};
-use crate::{SifliTool, SubcommandParams, utils};
+use crate::{SifliTool, SubcommandParams};
+use crate::utils::Utils;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::{Read, Seek, Write};
@@ -36,9 +37,9 @@ fn parse_file_info(file_spec: &str) -> Result<ReadFlashFile, std::io::Error> {
         ));
     };
 
-    let address = utils::Utils::str_to_u32(addr)
+    let address = Utils::str_to_u32(addr)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-    let size = utils::Utils::str_to_u32(size)
+    let size = Utils::str_to_u32(size)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
     Ok(ReadFlashFile {
@@ -138,11 +139,11 @@ impl ReadFlashTrait for SifliTool {
             }
             
             current_file.seek(std::io::SeekFrom::Start(0))?;
-            let read_file_crc32 = utils::Utils::get_file_crc32(&current_file)?;
+            let read_file_crc32 = Utils::get_file_crc32(&current_file)?;
             let mut read_crc_str_bytes = [0u8; 14];
             self.port.read_exact(&mut read_crc_str_bytes)?;
             let read_crc_str = String::from_utf8_lossy(&read_crc_str_bytes);
-            let read_crc32 = utils::Utils::str_to_u32(&read_crc_str[4..])
+            let read_crc32 = Utils::str_to_u32(&read_crc_str[4..])
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
             if read_file_crc32 != read_crc32 {
                 return Err(std::io::Error::new(

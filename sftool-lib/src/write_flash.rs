@@ -1,15 +1,13 @@
-use crate::{utils, SifliTool, SubcommandParams};
+use crate::{SifliTool, SubcommandParams};
+use crate::utils::Utils;
 use crate::ram_command::{Command, RamCommand, Response};
-use crc::Algorithm;
 use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use memmap2::Mmap;
-use phf::phf_map;
 use std::cmp::PartialEq;
 use std::collections::HashMap;
-use std::fmt::format;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::io::{BufReader, Read, Seek, Write};
 use std::path::Path;
 use tempfile::tempfile;
 
@@ -26,10 +24,11 @@ enum FileType {
     Elf,
 }
 
-struct WriteFlashFile {
-    address: u32,
-    file: File,
-    crc32: u32,
+#[derive(Debug)]
+pub struct WriteFlashFile {
+    pub address: u32,
+    pub file: File,
+    pub crc32: u32,
 }
 
 fn detect_file_type(path: &Path) -> Result<FileType, std::io::Error> {
@@ -55,68 +54,6 @@ fn detect_file_type(path: &Path) -> Result<FileType, std::io::Error> {
         std::io::ErrorKind::InvalidInput,
         "Unrecognized file type",
     ))
-}
-
-fn hex_to_bin(hex_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
-    let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
-
-    let file = std::fs::File::open(hex_file)?;
-    let mut reader = std::io::BufReader::new(file);
-
-    let mut address = 0;
-    let mut temp_file = tempfile()?;
-
-    for line in reader.lines() {
-        let line = line?;
-        let line = line.trim_end_matches('\r');
-        let bytes_read = line.len();
-        if bytes_read == 0 {
-            break;
-        }
-        let ihex_record = ihex::Record::from_record_string(&line)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-
-        match ihex_record {
-            ihex::Record::ExtendedLinearAddress(addr) => {
-                address = (addr as u32) << 16;
-            }
-            ihex::Record::Data { offset, value } => {
-                // 获取当前文件长度
-                let metadata = temp_file.metadata()?;
-                let current_len = metadata.len();
-                let offset_u64 = offset as u64;
-
-                // 如果当前文件长度小于 offset，则说明文件中存在空隙，需要填充 0xFF
-                if current_len < offset_u64 {
-                    // 先定位到文件末尾（也就是 current_len 位置）
-                    temp_file.seek(SeekFrom::End(0))?;
-
-                    // 计算需要填充的字节数
-                    let gap_size = offset_u64 - current_len;
-
-                    // 构造一个填充缓冲区，该缓冲区内容全为 0xFF
-                    let fill_data = vec![0xFF; gap_size as usize];
-                    temp_file.write_all(&fill_data)?;
-                }
-
-                // 定位到指定的 offset 开始写入数据
-                temp_file.seek(SeekFrom::Start(offset_u64))?;
-                temp_file.write_all(&value)?;
-            }
-            ihex::Record::EndOfFile => {
-                temp_file.seek(SeekFrom::Start(0))?;
-                let crc32 = utils::Utils::get_file_crc32(&temp_file.try_clone()?)?;
-                write_flash_files.push(WriteFlashFile {
-                    address,
-                    file: temp_file.try_clone()?,
-                    crc32,
-                });
-            }
-            _ => {}
-        }
-    }
-
-    Ok(write_flash_files)
 }
 
 fn elf_to_bin(elf_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
@@ -155,7 +92,7 @@ fn elf_to_bin(elf_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
         // 如果超出了当前对齐块，创建新文件
         if segment_base > current_base + current_offset {
             current_file.seek(std::io::SeekFrom::Start(0))?;
-            let crc32 = utils::Utils::get_file_crc32(&current_file)?;
+            let crc32 = Utils::get_file_crc32(&current_file)?;
             write_flash_files.push(WriteFlashFile {
                 address: current_base,
                 file: std::mem::replace(&mut current_file, tempfile()?),
@@ -183,7 +120,7 @@ fn elf_to_bin(elf_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
     // 处理最后一个bin文件
     if current_offset > 0 {      
         current_file.seek(std::io::SeekFrom::Start(0))?;
-        let crc32 = utils::Utils::get_file_crc32(&current_file)?;
+        let crc32 = Utils::get_file_crc32(&current_file)?;
         write_flash_files.push(WriteFlashFile {
             address: current_base,
             file: current_file,
@@ -275,10 +212,10 @@ impl WriteFlashTrait for SifliTool {
             let parts: Vec<_> = file.split('@').collect();
             // 如果存在@符号，则证明是bin文件
             if parts.len() == 2 {
-                let addr = utils::Utils::str_to_u32(parts[1])
+                let addr = Utils::str_to_u32(parts[1])
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
                 let file = File::open(parts[0])?;
-                let crc32 = utils::Utils::get_file_crc32(&file.try_clone()?)?;
+                let crc32 = Utils::get_file_crc32(&file.try_clone()?)?;
                 write_flash_files.push(WriteFlashFile {
                     address: addr,
                     file,
@@ -291,7 +228,7 @@ impl WriteFlashTrait for SifliTool {
 
             match file_type {
                 FileType::Hex => {
-                    write_flash_files.append(&mut hex_to_bin(Path::new(parts[0]))?);
+                    write_flash_files.append(&mut Utils::hex_to_bin(Path::new(parts[0]))?);
                 }
                 FileType::Elf => {
                     write_flash_files.append(&mut elf_to_bin(Path::new(parts[0]))?);
