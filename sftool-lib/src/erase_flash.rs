@@ -1,7 +1,8 @@
 use std::time::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
 use crate::ram_command::{Command, RamCommand, Response};
-use crate::{SifliTool, SubcommandParams, utils};
+use crate::{SifliTool, SubcommandParams};
+use crate::utils::Utils;
 
 pub trait EraseFlashTrait {
     fn erase_flash(&mut self) -> Result<(), std::io::Error>;
@@ -18,7 +19,7 @@ impl EraseFlashTrait for SifliTool {
         };
 
         // Convert address to u32
-        let address = utils::Utils::str_to_u32(&params.address)
+        let address = Utils::str_to_u32(&params.address)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
         let spinner = ProgressBar::new_spinner();
@@ -69,9 +70,9 @@ impl EraseFlashTrait for SifliTool {
                 ));
             };
 
-            let address = utils::Utils::str_to_u32(address)
+            let address = Utils::str_to_u32(address)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-            let len = utils::Utils::str_to_u32(len)
+            let len = Utils::str_to_u32(len)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
             regions.push((address, len));
