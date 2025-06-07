@@ -17,7 +17,7 @@ pub struct SF32LB56Tool {
 }
 
 impl SF32LB56Tool {
-    pub fn new(base: SifliToolBase, subcommand_params: SubcommandParams) -> Box<dyn SifliTool> {
+    pub fn new(_base: SifliToolBase, _subcommand_params: SubcommandParams) -> Box<dyn SifliTool> {
         todo!("SF32LB56Tool::new not implemented yet");
     }
 }

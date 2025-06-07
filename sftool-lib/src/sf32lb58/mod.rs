@@ -6,9 +6,8 @@ pub mod erase_flash;
 pub mod reset;
 pub mod speed;
 
-use crate::{SifliToolBase, SubcommandParams, SifliTool};
+use crate::{SifliTool, SifliToolBase, SubcommandParams};
 use serialport::SerialPort;
-use std::time::Duration;
 
 pub struct SF32LB58Tool {
     pub base: SifliToolBase,
@@ -18,7 +17,7 @@ pub struct SF32LB58Tool {
 }
 
 impl SF32LB58Tool {
-    pub fn new(base: SifliToolBase, subcommand_params: SubcommandParams) -> Box<dyn SifliTool> {
+    pub fn new(_base: SifliToolBase, _subcommand_params: SubcommandParams) -> Box<dyn SifliTool> {
         todo!("SF32LB58Tool::new not implemented yet");
     }
 }

@@ -36,6 +36,115 @@ impl SF32LB52Tool {
             subcommand_params,
         })
     }
+
+    /// 执行全部flash擦除的内部方法
+    pub fn internal_erase_all(&mut self, address: u32) -> Result<(), std::io::Error> {
+        use ram_command::{Command, RamCommand};
+        use indicatif::{ProgressBar, ProgressStyle};
+        
+        let progress_bar = ProgressBar::new_spinner();
+        if !self.base().quiet {
+            progress_bar.set_style(
+                ProgressStyle::default_spinner()
+                    .template("[{prefix}] Erasing entire flash at {msg}... {spinner}")
+                    .unwrap(),
+            );
+            progress_bar.set_message(format!("0x{:08X}", address));
+            progress_bar.set_prefix(format!("0x{:02X}", self.step));
+            self.step = self.step.wrapping_add(1);
+        }
+
+        // 发送擦除所有命令
+        let _ = self.command(Command::EraseAll { address });
+
+        let mut buffer = Vec::new();
+        let now = std::time::SystemTime::now();
+
+        // 等待擦除完成
+        loop {
+            let elapsed = now.elapsed().unwrap().as_millis();
+            if elapsed > 30000 {  // 擦除可能需要更长时间
+                tracing::error!("response string is {}", String::from_utf8_lossy(&buffer));
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Erase timeout"));
+            }
+
+            let mut byte = [0];
+            let ret = self.port().read_exact(&mut byte);
+            if ret.is_err() {
+                continue;
+            }
+            buffer.push(byte[0]);
+
+            // 检查擦除完成响应
+            if buffer.windows(2).any(|window| window == b"OK") {
+                break;
+            }
+        }
+
+        if !self.base().quiet {
+            progress_bar.finish_with_message(format!(
+                "Erase flash successfully: 0x{:08X}",
+                address
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// 执行区域擦除的内部方法
+    pub fn internal_erase_region(&mut self, address: u32, len: u32) -> Result<(), std::io::Error> {
+        use ram_command::{Command, RamCommand};
+        use indicatif::{ProgressBar, ProgressStyle};
+
+        let progress_bar = ProgressBar::new(len as u64);
+        if !self.base().quiet {
+            progress_bar.set_style(
+                ProgressStyle::default_bar()
+                    .template("[{prefix}] Erasing region at {msg}... {wide_bar} {percent_precise}%")
+                    .unwrap()
+                    .progress_chars("=>-"),
+            );
+            progress_bar.set_message(format!("0x{:08X}", address));
+            progress_bar.set_prefix(format!("0x{:02X}", self.step));
+            self.step = self.step.wrapping_add(1);
+        }
+
+        // 发送擦除区域命令
+        let _ = self.command(Command::Erase { address, len });
+
+        let mut buffer = Vec::new();
+        let now = std::time::SystemTime::now();
+
+        // 等待擦除完成
+        loop {
+            let elapsed = now.elapsed().unwrap().as_millis();
+            if elapsed > 30000 {  // 擦除可能需要更长时间
+                tracing::error!("response string is {}", String::from_utf8_lossy(&buffer));
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Erase timeout"));
+            }
+
+            let mut byte = [0];
+            let ret = self.port().read_exact(&mut byte);
+            if ret.is_err() {
+                continue;
+            }
+            buffer.push(byte[0]);
+
+            // 检查擦除完成响应
+            if buffer.windows(2).any(|window| window == b"OK") {
+                break;
+            }
+        }
+
+        if !self.base().quiet {
+            progress_bar.finish_with_message(format!(
+                "Erase region successfully: 0x{:08X} (length: 0x{:08X})",
+                address, len
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 impl SifliTool for SF32LB52Tool {
@@ -184,7 +293,7 @@ impl SifliTool for SF32LB52Tool {
         // 2. Download stub
         let stub = ram_stub::RamStubFile::get(
             CHIP_FILE_NAME
-                .get(format!("SF32LB52_{}", self.base.memory_type).as_str())
+                .get(format!("sf32lb52_{}", self.base.memory_type).as_str())
                 .expect("REASON"),
         );
         let Some(stub) = stub else {
