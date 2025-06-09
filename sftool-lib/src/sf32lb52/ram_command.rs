@@ -2,7 +2,7 @@ use crate::sf32lb52::SF32LB52Tool;
 use crate::sf32lb52::sifli_debug::{SifliUartCommand, SifliDebug};
 use crate::SifliTool;
 use std::io::{Read, Write};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::str::FromStr;
 use strum::{Display, EnumString};
 
 #[derive(EnumString, Display, Debug, Clone, PartialEq, Eq)]
@@ -49,85 +49,103 @@ pub trait RamCommand {
     fn send_data(&mut self, data: &[u8]) -> Result<Response, std::io::Error>;
 }
 
-/// Helper function to get response from serial port
-fn get_response(port: &mut Box<dyn serialport::SerialPort>, _expected_responses: &[&str], timeout_ms: u128) -> Result<String, std::io::Error> {
-    const DEFAULT_TIMEOUT: u128 = 4000; // ms
-    let timeout = if timeout_ms > 0 { timeout_ms } else { DEFAULT_TIMEOUT };
-    
-    let mut buffer = Vec::new();
-    let start_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
-    
-    let mut byte = [0];
-    
-    loop {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
-        if now - start_time > timeout {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                "Timeout waiting for response",
-            ));
-        }
-        
-        if port.read_exact(&mut byte).is_ok() {
-            buffer.push(byte[0]);
-            if buffer.len() >= 2 && buffer.ends_with(b"\r\n") {
-                break;
-            }
-        }
-    }
-    
-    // Remove \r\n from the end
-    if buffer.len() >= 2 {
-        buffer.truncate(buffer.len() - 2);
-    }
-    
-    let response_str = String::from_utf8_lossy(&buffer);
-    Ok(response_str.to_string())
-}
-
 pub trait DownloadStub {
     fn download_stub(&mut self) -> Result<(), std::io::Error>;
 }
 
+const TIMEOUT: u128 = 4000; //ms
+
 impl RamCommand for SF32LB52Tool {
     fn command(&mut self, cmd: Command) -> Result<Response, std::io::Error> {
-        let cmd_str = cmd.to_string();
-        self.port().write_all(cmd_str.as_bytes())?;
-        self.port().flush()?;
-        
-        let response = get_response(self.port(), &RESPONSE_STR_TABLE, 0)?;
-        
-        match response.as_str() {
-            "OK" => Ok(Response::Ok),
-            "Fail" => Ok(Response::Fail),
-            "RX_WAIT" => Ok(Response::RxWait),
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Unknown response: {}", response),
-            )),
+        tracing::debug!("command: {:?}", cmd);
+        self.port.write_all(cmd.to_string().as_bytes())?;
+        self.port.flush()?;
+        self.port.clear(serialport::ClearBuffer::All)?;
+
+        let timeout = match cmd {
+            Command::EraseAll { .. } => 30 * 1000,
+            _ => TIMEOUT,
+        };
+
+        match cmd {
+            Command::SetBaud { .. } => return Ok(Response::Ok),
+            Command::Read { .. } => return Ok(Response::Ok),
+            _ => (),
+        }
+
+        let mut buffer = Vec::new();
+        let now = std::time::SystemTime::now();
+        loop {
+            let elapsed = now.elapsed().unwrap().as_millis();
+            if elapsed > timeout {
+                tracing::debug!("Response buffer: {:?}", String::from_utf8_lossy(&buffer));
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timeout"));
+            }
+
+            let mut byte = [0];
+            let ret = self.port.read_exact(&mut byte);
+            if ret.is_err() {
+                continue;
+            }
+            buffer.push(byte[0]);
+
+            for response_str in RESPONSE_STR_TABLE.iter() {
+                let response_bytes = response_str.as_bytes();
+                // 对比buffer和response_bytes，如果buffer中包含response_str，就认为接收完毕
+                // 不需要转成字符串，直接对比字节
+                let exists = buffer
+                    .windows(response_bytes.len())
+                    .any(|window| window == response_bytes);
+                if exists {
+                    tracing::debug!("Response buffer: {:?}", String::from_utf8_lossy(&buffer));
+                    return Response::from_str(response_str).map_err(|e| {
+                        std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
+                    });
+                }
+            }
         }
     }
 
     fn send_data(&mut self, data: &[u8]) -> Result<Response, std::io::Error> {
-        self.port().write_all(data)?;
-        self.port().flush()?;
-        
-        let response = get_response(self.port(), &RESPONSE_STR_TABLE, 0)?;
-        
-        match response.as_str() {
-            "OK" => Ok(Response::Ok),
-            "Fail" => Ok(Response::Fail),
-            "RX_WAIT" => Ok(Response::RxWait),
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Unknown response: {}", response),
-            )),
+        if !self.base.compat {
+            self.port.write_all(data)?;
+            self.port.flush()?;
+        } else {
+            // 每次只发256字节
+            for chunk in data.chunks(256) {
+                self.port.write_all(chunk)?;
+                self.port.flush()?;
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+
+        let mut buffer = Vec::new();
+        let now = std::time::SystemTime::now();
+        loop {
+            let elapsed = now.elapsed().unwrap().as_millis();
+            if elapsed > TIMEOUT {
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timeout"));
+            }
+
+            let mut byte = [0];
+            let ret = self.port.read_exact(&mut byte);
+            if ret.is_err() {
+                continue;
+            }
+            buffer.push(byte[0]);
+
+            // 一旦buffer出现RESPONSE_STR_TABLE中的任意一个，不一定是结束字节，也可能是在buffer中间出现，就认为接收完毕
+            for response_str in RESPONSE_STR_TABLE.iter() {
+                let response_bytes = response_str.as_bytes();
+                let exists = buffer
+                    .windows(response_bytes.len())
+                    .any(|window| window == response_bytes);
+                if exists {
+                    return Response::from_str(response_str).map_err(|e| {
+                        std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
+                    });
+                }
+            }
         }
     }
 }
