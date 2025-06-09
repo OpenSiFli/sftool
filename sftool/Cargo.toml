@@ -2,10 +2,11 @@
 name = "sftool"
 version = "0.1.7"
 edition = "2024"
-description = "SiFli SoC serial utility library"
+description = "SiFli SoC serial utility command-line tool"
 license = "Apache-2.0"
-documentation = "https://docs.rs/sftool-lib"
+documentation = "https://docs.rs/sftool"
 repository = "https://github.com/OpenSiFli/sftool"
+readme = "README.md"
 
 [dependencies]
 clap = { version = "4.5.31", features = ["derive"] }

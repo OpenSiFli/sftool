@@ -6,6 +6,7 @@ description = "SiFli SoC serial utility library"
 license = "Apache-2.0"
 documentation = "https://docs.rs/sftool-lib"
 repository = "https://github.com/OpenSiFli/sftool"
+readme = "README.md"
 
 [lib]
 path = "src/lib.rs"
