@@ -5,16 +5,6 @@ use std::process;
 use serialport;
 
 #[derive(EnumString, Display, Debug, Clone, ValueEnum)]
-enum Chip {
-    #[clap(name = "SF32LB52")]
-    SF32LB52,
-    #[clap(name = "SF32LB56")]
-    SF32LB56,
-    #[clap(name = "SF32LB58")]
-    SF32LB58,
-}
-
-#[derive(EnumString, Display, Debug, Clone, ValueEnum)]
 enum Memory {
     #[clap(name = "nor")]
     Nor,
@@ -29,7 +19,7 @@ enum Memory {
 struct Cli {
     /// Target chip type
     #[arg(short = 'c', long = "chip", value_enum)]
-    chip: Chip,
+    chip: ChipType,
 
     /// Memory type
     #[arg(short = 'm', long = "memory", value_enum, default_value = "nor")]
@@ -216,11 +206,7 @@ fn main() {    // Initialize tracing, set log level from environment variable
         process::exit(1);
     }
 
-    let chip_type = match args.chip {
-        Chip::SF32LB52 => ChipType::SF32LB52,
-        Chip::SF32LB56 => ChipType::SF32LB56,
-        Chip::SF32LB58 => ChipType::SF32LB58,
-    };
+    let chip_type = args.chip;
     
     let mut siflitool = create_sifli_tool(
         chip_type,

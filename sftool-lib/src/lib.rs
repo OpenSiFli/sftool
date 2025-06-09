@@ -25,9 +25,13 @@ pub enum Operation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
 pub enum ChipType {
+    #[cfg_attr(feature = "cli", clap(name = "SF32LB52"))]
     SF32LB52,
+    #[cfg_attr(feature = "cli", clap(name = "SF32LB56"))]
     SF32LB56,
+    #[cfg_attr(feature = "cli", clap(name = "SF32LB58"))]
     SF32LB58,
 }
 
