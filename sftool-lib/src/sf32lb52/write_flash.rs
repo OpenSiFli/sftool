@@ -158,7 +158,7 @@ impl WriteFlashTrait for SF32LB52Tool {
 
             let download_bar_template = ProgressStyle::default_bar()
                 .template(
-                    "[{prefix}] Download at {msg}... {wide_bar} {bytes_per_sec} {percent_precise}%",
+                    "[{prefix}] {msg} {wide_bar} {bytes_per_sec} {percent_precise}%",
                 )
                 .unwrap()
                 .progress_chars("=>-");
@@ -191,7 +191,7 @@ impl WriteFlashTrait for SF32LB52Tool {
                     re_download_spinner.finish_with_message("Need to re-download");
 
                     download_bar.set_style(download_bar_template);
-                    download_bar.set_message(format!("0x{:08X}", file.address));
+                    download_bar.set_message(format!("Download at 0x{:08X}...", file.address));
                     download_bar.set_prefix(format!("0x{:02X}", step));
                     step += 1;
                 }
@@ -239,7 +239,7 @@ impl WriteFlashTrait for SF32LB52Tool {
 
                 if !self.base.quiet {
                     download_bar.set_style(download_bar_template);
-                    download_bar.set_message(format!("0x{:08X}", file.address));
+                    download_bar.set_message(format!("Download at 0x{:08X}...", file.address));
                     download_bar.set_prefix(format!("0x{:02X}", step));
                     step += 1;
                 }
