@@ -1,8 +1,5 @@
-use sftool_lib::ram_command::DownloadStub;
-use sftool_lib::reset::Reset;
 use clap::{Parser, Subcommand, ValueEnum};
-use sftool_lib::speed::SpeedTrait;
-use sftool_lib::{Operation, SifliTool, SifliToolBase};
+use sftool_lib::{Operation, SifliToolBase, ChipType, create_sifli_tool};
 use strum::{Display, EnumString};
 use std::process;
 use serialport;
@@ -11,6 +8,10 @@ use serialport;
 enum Chip {
     #[clap(name = "SF32LB52")]
     SF32LB52,
+    #[clap(name = "SF32LB56")]
+    SF32LB56,
+    #[clap(name = "SF32LB58")]
+    SF32LB58,
 }
 
 #[derive(EnumString, Display, Debug, Clone, ValueEnum)]
@@ -215,10 +216,16 @@ fn main() {    // Initialize tracing, set log level from environment variable
         process::exit(1);
     }
 
-    let mut siflitool = SifliTool::new(
+    let chip_type = match args.chip {
+        Chip::SF32LB52 => ChipType::SF32LB52,
+        Chip::SF32LB56 => ChipType::SF32LB56,
+        Chip::SF32LB58 => ChipType::SF32LB58,
+    };
+    
+    let mut siflitool = create_sifli_tool(
+        chip_type,
         SifliToolBase {
             port_name: args.port.clone(),
-            chip: args.chip.to_string().to_lowercase(),
             before: args.before,
             memory_type: args.memory.to_string().to_lowercase(),
             quiet: false,

@@ -1,18 +1,16 @@
 use crate::SifliTool;
 use probe_rs::architecture::arm::armv8m::Dcrdr;
-use probe_rs::{MemoryMappedRegister, RegisterId, memory_mapped_bitfield_register};
+use probe_rs::{MemoryMappedRegister, memory_mapped_bitfield_register};
 use std::cmp::{max, min};
 use std::fmt;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::time::{Duration, Instant};
-use probe_rs::architecture::arm::ArmError;
 
 const START_WORD: [u8; 2] = [0x7E, 0x79];
 const DEFUALT_RECV_TIMEOUT: Duration = Duration::from_secs(3);
-const DEFUALT_UART_BAUD: u32 = 1000000;
 
 #[derive(Debug)]
-pub(crate) enum SifliUartCommand<'a> {
+pub enum SifliUartCommand<'a> {
     Enter,
     Exit,
     MEMRead { addr: u32, len: u16 },
@@ -20,7 +18,7 @@ pub(crate) enum SifliUartCommand<'a> {
 }
 
 #[derive(Debug)]
-pub(crate) enum SifliUartResponse {
+pub enum SifliUartResponse {
     Enter,
     Exit,
     MEMRead { data: Vec<u8> },
@@ -30,7 +28,6 @@ pub(crate) enum SifliUartResponse {
 #[derive(Debug)]
 enum RecvError {
     Timeout,
-    InvalidFrameStart,
     InvalidHeaderLength,
     InvalidHeaderChannel,
     ReadError(std::io::Error),
@@ -43,10 +40,6 @@ impl From<RecvError> for std::io::Error {
             RecvError::Timeout => std::io::Error::new(
                 std::io::ErrorKind::TimedOut, 
                 "Receive data timeout"
-            ),
-            RecvError::InvalidFrameStart => std::io::Error::new(
-                std::io::ErrorKind::InvalidData, 
-                "Invalid frame start marker"
             ),
             RecvError::InvalidHeaderLength => std::io::Error::new(
                 std::io::ErrorKind::InvalidData, 
@@ -148,20 +141,31 @@ impl Dhcsr {
     }
 }
 
-impl SifliTool {
-    fn create_header(len: u16) -> Vec<u8> {
-        let mut header = vec![];
-        header.extend_from_slice(&START_WORD);
-        header.extend_from_slice(&len.to_le_bytes());
-        header.push(0x10);
-        header.push(0x00);
-        header
-    }
+pub trait SifliDebug {
+    fn debug_command(&mut self, command: SifliUartCommand) -> Result<SifliUartResponse, std::io::Error>;
+    fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<(), std::io::Error>;
+    fn debug_read_word32(&mut self, addr: u32) -> Result<u32, std::io::Error>;
+    fn debug_write_core_reg(&mut self, reg: u16, data: u32) -> Result<(), std::io::Error>;
+    fn debug_write_memory(&mut self, addr: u32, data: &[u8]) -> Result<(), std::io::Error>;
+    fn debug_run(&mut self) -> Result<(), std::io::Error>;
+    fn debug_halt(&mut self) -> Result<(), std::io::Error>;
+    fn debug_step(&mut self) -> Result<(), std::io::Error>;
+}
 
-    fn send(
-        writer: &mut BufWriter<Box<dyn Write + Send>>,
-        command: &SifliUartCommand,
-    ) -> Result<(), std::io::Error> {
+// Helper functions for SifliDebug implementation
+fn create_header(len: u16) -> Vec<u8> {
+    let mut header = vec![];
+    header.extend_from_slice(&START_WORD);
+    header.extend_from_slice(&len.to_le_bytes());
+    header.push(0x10);
+    header.push(0x00);
+    header
+}
+
+fn send(
+    writer: &mut BufWriter<Box<dyn Write + Send>>,
+    command: &SifliUartCommand,
+) -> Result<(), std::io::Error> {
         let mut send_data = vec![];
         match command {
             SifliUartCommand::Enter => {
@@ -189,7 +193,7 @@ impl SifliTool {
             }
         }
 
-        let header = Self::create_header(send_data.len() as u16);
+        let header = create_header(send_data.len() as u16);
         writer.write_all(&header)?;
         writer.write_all(&send_data)?;
         writer.flush()?;
@@ -331,18 +335,19 @@ impl SifliTool {
         }
     }
 
-    pub(crate) fn debug_command(
+impl<T: SifliTool> SifliDebug for T {
+    fn debug_command(
         &mut self,
         command: SifliUartCommand,
     ) -> Result<SifliUartResponse, std::io::Error> {
         tracing::info!("Command: {}", command);
-        let writer: Box<dyn Write + Send> = self.port.try_clone()?;
+        let writer: Box<dyn Write + Send> = self.port().try_clone()?;
         let mut buf_writer = BufWriter::new(writer);
 
-        let reader: Box<dyn Read + Send> = self.port.try_clone()?;
+        let reader: Box<dyn Read + Send> = self.port().try_clone()?;
         let mut buf_reader = BufReader::new(reader);
 
-        let ret = Self::send(&mut buf_writer, &command);
+        let ret = send(&mut buf_writer, &command);
         if let Err(e) = ret {
             tracing::error!("Command send error: {:?}", e);
             return Err(e);
@@ -350,11 +355,11 @@ impl SifliTool {
 
         match command {
             SifliUartCommand::Exit => Ok(SifliUartResponse::Exit),
-            _ => Self::recv(&mut buf_reader),
+            _ => recv(&mut buf_reader),
         }
     }
 
-    pub(crate) fn debug_read_word32(&mut self, addr: u32) -> Result<u32, std::io::Error> {
+    fn debug_read_word32(&mut self, addr: u32) -> Result<u32, std::io::Error> {
         let command = SifliUartCommand::MEMRead { addr, len: 1 };
         match self.debug_command(command) {
             Ok(SifliUartResponse::MEMRead { data }) => {
@@ -375,7 +380,7 @@ impl SifliTool {
         }
     }
 
-    pub(crate) fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<(), std::io::Error> {
+    fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<(), std::io::Error> {
         let command = SifliUartCommand::MEMWrite {
             addr,
             data: &[data],
@@ -390,7 +395,7 @@ impl SifliTool {
         }
     }
 
-    pub(crate) fn debug_write_memory(&mut self, address: u32, data: &[u8]) -> Result<(), std::io::Error> {
+    fn debug_write_memory(&mut self, address: u32, data: &[u8]) -> Result<(), std::io::Error> {
         if data.is_empty() {
             return Ok(());
         }
@@ -465,27 +470,9 @@ impl SifliTool {
         Ok(())
     }
     
-    fn wait_for_core_register_transfer(
+    fn debug_write_core_reg(
         &mut self,
-        timeout: Duration
-    ) -> Result<(), std::io::Error> {
-        // now we have to poll the dhcsr register, until the dhcsr.s_regrdy bit is set
-        // (see C1-292, cortex m0 arm)
-        let start = Instant::now();
-
-        while start.elapsed() < timeout {
-            let dhcsr_val = Dhcsr(self.debug_read_word32(Dhcsr::get_mmio_address() as u32)?);
-
-            if dhcsr_val.s_regrdy() {
-                return Ok(());
-            }
-        }
-        Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timeout"))
-    }
-
-    pub(crate) fn debug_write_core_reg(
-        &mut self,
-        addr: RegisterId,
+        addr: u16,
         value: u32,
     ) -> Result<(), std::io::Error> {
         self.debug_write_word32(Dcrdr::get_mmio_address() as u32, value)?;
@@ -501,21 +488,6 @@ impl SifliTool {
         Ok(())
     }
 
-    fn debug_read_core_reg(&mut self, addr: RegisterId) -> Result<u32, std::io::Error> {
-        // Write the DCRSR value to select the register we want to read.
-        let mut dcrsr_val = Dcrsr(0);
-        dcrsr_val.set_regwnr(false); // Perform a read.
-        dcrsr_val.set_regsel(addr.into()); // The address of the register to read.
-
-        self.debug_write_word32(Dcrsr::get_mmio_address() as u32, dcrsr_val.into())?;
-
-        self.wait_for_core_register_transfer(Duration::from_millis(100))?;
-
-        let value = self.debug_read_word32(Dcrdr::get_mmio_address() as u32)?;
-
-        Ok(value)
-    }
-    
     fn debug_step(&mut self)-> Result<(), std::io::Error> {
         // 这里我们忽略了很多必要的检查，请参考probe-rs源码
         let mut value = Dhcsr(0);
@@ -533,7 +505,7 @@ impl SifliTool {
         Ok(())
     }
     
-    pub(crate) fn debug_run(&mut self) -> Result<(), std::io::Error> {
+    fn debug_run(&mut self) -> Result<(), std::io::Error> {
         self.debug_step()?;
         let mut value = Dhcsr(0);
         value.set_c_halt(false);
@@ -546,7 +518,7 @@ impl SifliTool {
         Ok(())
     }
     
-    pub fn debug_halt(&mut self) -> Result<(), std::io::Error> {
+    fn debug_halt(&mut self) -> Result<(), std::io::Error> {
         let mut value = Dhcsr(0);
         value.set_c_halt(true);
         value.set_c_debugen(true);
