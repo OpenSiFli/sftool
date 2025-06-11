@@ -1,8 +1,8 @@
-use super::ram_command::{Command, RamCommand, Response};
 use super::SF32LB52Tool;
-use crate::utils::{FileType, Utils, ELF_MAGIC};
-use crate::write_flash::WriteFlashTrait;
+use super::ram_command::{Command, RamCommand, Response};
 use crate::WriteFlashParams;
+use crate::utils::{ELF_MAGIC, FileType, Utils};
+use crate::write_flash::WriteFlashTrait;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::{BufReader, Read, Write};

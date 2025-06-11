@@ -1,7 +1,7 @@
-use super::ram_command::{Command, RamCommand};
-use crate::{utils, ReadFlashParams};
-use crate::read_flash::ReadFlashTrait;
 use super::SF32LB52Tool;
+use super::ram_command::{Command, RamCommand};
+use crate::read_flash::ReadFlashTrait;
+use crate::{ReadFlashParams, utils};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::{Read, Seek, Write};
@@ -127,7 +127,7 @@ impl ReadFlashTrait for SF32LB52Tool {
                     progress_bar.inc(read_size as u64);
                 }
             }
-            
+
             current_file.seek(std::io::SeekFrom::Start(0))?;
             let read_file_crc32 = utils::Utils::get_file_crc32(&current_file)?;
             let mut read_crc_str_bytes = [0u8; 14];
@@ -144,7 +144,7 @@ impl ReadFlashTrait for SF32LB52Tool {
                     ),
                 ));
             }
-            
+
             // 将读取的文件保存到指定路径
             let mut output_file = File::create(&file.file_path)?;
             current_file.seek(std::io::SeekFrom::Start(0))?;

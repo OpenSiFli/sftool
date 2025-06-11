@@ -1,11 +1,11 @@
+use crate::sf32lb52::write_flash::WriteFlashFile;
 use crc::Algorithm;
+use memmap2::Mmap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::num::ParseIntError;
 use std::path::Path;
-use memmap2::Mmap;
 use tempfile::tempfile;
-use crate::sf32lb52::write_flash::WriteFlashFile;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum FileType {

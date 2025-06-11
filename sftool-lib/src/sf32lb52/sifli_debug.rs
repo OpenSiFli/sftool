@@ -37,25 +37,22 @@ enum RecvError {
 impl From<RecvError> for std::io::Error {
     fn from(err: RecvError) -> Self {
         match err {
-            RecvError::Timeout => std::io::Error::new(
-                std::io::ErrorKind::TimedOut, 
-                "Receive data timeout"
-            ),
-            RecvError::InvalidHeaderLength => std::io::Error::new(
-                std::io::ErrorKind::InvalidData, 
-                "Invalid frame length"
-            ),
+            RecvError::Timeout => {
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "Receive data timeout")
+            }
+            RecvError::InvalidHeaderLength => {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid frame length")
+            }
             RecvError::InvalidHeaderChannel => std::io::Error::new(
-                std::io::ErrorKind::InvalidData, 
-                "Invalid frame channel information"
+                std::io::ErrorKind::InvalidData,
+                "Invalid frame channel information",
             ),
-            RecvError::ReadError(e) => std::io::Error::new(
-                e.kind(), 
-                format!("Data read error: {}", e)
-            ),
+            RecvError::ReadError(e) => {
+                std::io::Error::new(e.kind(), format!("Data read error: {}", e))
+            }
             RecvError::InvalidResponse(code) => std::io::Error::new(
-                std::io::ErrorKind::InvalidData, 
-                format!("Invalid response code: {:#04X}", code)
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid response code: {:#04X}", code),
             ),
         }
     }
@@ -142,7 +139,10 @@ impl Dhcsr {
 }
 
 pub trait SifliDebug {
-    fn debug_command(&mut self, command: SifliUartCommand) -> Result<SifliUartResponse, std::io::Error>;
+    fn debug_command(
+        &mut self,
+        command: SifliUartCommand,
+    ) -> Result<SifliUartResponse, std::io::Error>;
     fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<(), std::io::Error>;
     fn debug_read_word32(&mut self, addr: u32) -> Result<u32, std::io::Error>;
     fn debug_write_core_reg(&mut self, reg: u16, data: u32) -> Result<(), std::io::Error>;
@@ -166,174 +166,177 @@ fn send(
     writer: &mut BufWriter<Box<dyn Write + Send>>,
     command: &SifliUartCommand,
 ) -> Result<(), std::io::Error> {
-        let mut send_data = vec![];
-        match command {
-            SifliUartCommand::Enter => {
-                let temp = [0x41, 0x54, 0x53, 0x46, 0x33, 0x32, 0x05, 0x21];
-                send_data.extend_from_slice(&temp);
-            }
-            SifliUartCommand::Exit => {
-                let temp = [0x41, 0x54, 0x53, 0x46, 0x33, 0x32, 0x18, 0x21];
-                send_data.extend_from_slice(&temp);
-            }
-            SifliUartCommand::MEMRead { addr, len } => {
-                send_data.push(0x40);
-                send_data.push(0x72);
-                send_data.extend_from_slice(&addr.to_le_bytes());
-                send_data.extend_from_slice(&len.to_le_bytes());
-            }
-            SifliUartCommand::MEMWrite { addr, data } => {
-                send_data.push(0x40);
-                send_data.push(0x77);
-                send_data.extend_from_slice(&addr.to_le_bytes());
-                send_data.extend_from_slice(&(data.len() as u16).to_le_bytes());
-                for d in data.iter() {
-                    send_data.extend_from_slice(&d.to_le_bytes());
-                }
+    let mut send_data = vec![];
+    match command {
+        SifliUartCommand::Enter => {
+            let temp = [0x41, 0x54, 0x53, 0x46, 0x33, 0x32, 0x05, 0x21];
+            send_data.extend_from_slice(&temp);
+        }
+        SifliUartCommand::Exit => {
+            let temp = [0x41, 0x54, 0x53, 0x46, 0x33, 0x32, 0x18, 0x21];
+            send_data.extend_from_slice(&temp);
+        }
+        SifliUartCommand::MEMRead { addr, len } => {
+            send_data.push(0x40);
+            send_data.push(0x72);
+            send_data.extend_from_slice(&addr.to_le_bytes());
+            send_data.extend_from_slice(&len.to_le_bytes());
+        }
+        SifliUartCommand::MEMWrite { addr, data } => {
+            send_data.push(0x40);
+            send_data.push(0x77);
+            send_data.extend_from_slice(&addr.to_le_bytes());
+            send_data.extend_from_slice(&(data.len() as u16).to_le_bytes());
+            for d in data.iter() {
+                send_data.extend_from_slice(&d.to_le_bytes());
             }
         }
-
-        let header = create_header(send_data.len() as u16);
-        writer.write_all(&header)?;
-        writer.write_all(&send_data)?;
-        writer.flush()?;
-
-        Ok(())
     }
 
-    fn recv(
-        reader: &mut BufReader<Box<dyn Read + Send>>,
-    ) -> Result<SifliUartResponse, std::io::Error> {
-        // 开始处理接收数据
-        let start_time = Instant::now();
-        
-        let mut temp: Vec<u8> = vec![];
-        
-        // 步骤1: 找到帧起始标记 (START_WORD)
-        tracing::debug!("Waiting for frame start marker...");
-        let mut buffer = vec![];
-        
-        loop {
-            if start_time.elapsed() >= DEFUALT_RECV_TIMEOUT {
-                tracing::warn!("Receive timeout: {} seconds", DEFUALT_RECV_TIMEOUT.as_secs());
-                return Err(RecvError::Timeout.into());
-            }
-            
-            let mut byte = [0; 1];
-            match reader.read_exact(&mut byte) {
-                Ok(_) => {
-                    // 处理帧检测逻辑
-                    if byte[0] == START_WORD[0] || (buffer.len() == 1 && byte[0] == START_WORD[1]) {
-                        buffer.push(byte[0]);
-                        
-                        // 检查是否找到完整的START_WORD
-                        if buffer.ends_with(&START_WORD) {
-                            tracing::debug!("Frame start marker found: {:02X?}", START_WORD);
-                            break;
-                        }
-                    } else {
-                        // 重置缓冲区
-                        buffer.clear();
-                    }
-                    
-                    // 缓冲区超过2个字节但没有匹配START_WORD，清除旧数据
-                    if buffer.len() > 2 {
-                        buffer.clear();
-                    }
-                },
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    // 对于非阻塞IO，继续尝试
-                    continue;
-                },
-                Err(e) => {
-                    tracing::error!("Error reading frame start marker: {}", e);
-                    continue; // 继续尝试读取下一个字节
-                }
-            }
-        }
-        
-        temp.extend_from_slice(&buffer);
-        
-        // 步骤2: 读取帧头部(长度，通道，CRC)
-        tracing::debug!("Reading frame header...");
-        
-        // 读取长度 (2字节)
-        let mut length_bytes = [0; 2];
-        if let Err(e) = reader.read_exact(&mut length_bytes) {
-            tracing::error!("Failed to read length bytes: {}", e);
-            return Err(RecvError::InvalidHeaderLength.into());
-        }
-        
-       temp.extend_from_slice(&length_bytes);
-        
-        let payload_size = u16::from_le_bytes(length_bytes) as usize;
-        tracing::debug!("Received packet length: {} bytes", payload_size);
-        
-        
-        // 读取通道和CRC (2字节)
-        let mut channel_crc = [0; 2];
-        if let Err(e) = reader.read_exact(&mut channel_crc) {
-            tracing::error!("Failed to read channel and CRC bytes: {}", e);
-            return Err(RecvError::InvalidHeaderChannel.into());
+    let header = create_header(send_data.len() as u16);
+    writer.write_all(&header)?;
+    writer.write_all(&send_data)?;
+    writer.flush()?;
+
+    Ok(())
+}
+
+fn recv(reader: &mut BufReader<Box<dyn Read + Send>>) -> Result<SifliUartResponse, std::io::Error> {
+    // 开始处理接收数据
+    let start_time = Instant::now();
+
+    let mut temp: Vec<u8> = vec![];
+
+    // 步骤1: 找到帧起始标记 (START_WORD)
+    tracing::debug!("Waiting for frame start marker...");
+    let mut buffer = vec![];
+
+    loop {
+        if start_time.elapsed() >= DEFUALT_RECV_TIMEOUT {
+            tracing::warn!(
+                "Receive timeout: {} seconds",
+                DEFUALT_RECV_TIMEOUT.as_secs()
+            );
+            return Err(RecvError::Timeout.into());
         }
 
-        temp.extend_from_slice(&channel_crc);
-        
-        // 步骤3: 读取有效载荷数据
-        tracing::debug!("Reading payload data ({} bytes)...", payload_size);
-        let mut recv_data = vec![]; 
-        
-        while recv_data.len() < payload_size {
-            let mut byte = [0; 1];
-            match reader.read_exact(&mut byte) {
-                Ok(_) => {
-                    recv_data.push(byte[0]);
-                },
-                Err(e) => {
-                    tracing::error!("Failed to read payload data: {}", e);
-                    return Err(RecvError::ReadError(e).into());
-                }
-            }
-        }
+        let mut byte = [0; 1];
+        match reader.read_exact(&mut byte) {
+            Ok(_) => {
+                // 处理帧检测逻辑
+                if byte[0] == START_WORD[0] || (buffer.len() == 1 && byte[0] == START_WORD[1]) {
+                    buffer.push(byte[0]);
 
-        temp.extend_from_slice(&recv_data);
-        
-        // 步骤4: 解析响应数据
-        if recv_data.is_empty() {
-            tracing::error!("Received empty payload data");
-            return Err(RecvError::InvalidResponse(0).into());
-        }
-        
-        let response_code = recv_data[0];
-        match response_code {
-            0xD1 => {
-                tracing::info!("Received Enter command response");
-                Ok(SifliUartResponse::Enter)
-            },
-            0xD0 => {
-                tracing::info!("Received Exit command response");
-                Ok(SifliUartResponse::Exit)
-            },
-            0xD2 => {
-                // 提取数据部分，跳过响应代码和最后的校验字节
-                let data = if recv_data.len() > 1 {
-                    recv_data[1..recv_data.len() - 1].to_vec()
+                    // 检查是否找到完整的START_WORD
+                    if buffer.ends_with(&START_WORD) {
+                        tracing::debug!("Frame start marker found: {:02X?}", START_WORD);
+                        break;
+                    }
                 } else {
-                    Vec::new()
-                };
-                tracing::info!("Received memory read response, data length: {} bytes", data.len());
-                Ok(SifliUartResponse::MEMRead { data })
-            },
-            0xD3 => {
-                tracing::info!("Received memory write response");
-                Ok(SifliUartResponse::MEMWrite)
-            },
-            _ => {
-                tracing::error!("Received unknown response code: {:#04X}", response_code);
-                Err(RecvError::InvalidResponse(response_code).into())
-            },
+                    // 重置缓冲区
+                    buffer.clear();
+                }
+
+                // 缓冲区超过2个字节但没有匹配START_WORD，清除旧数据
+                if buffer.len() > 2 {
+                    buffer.clear();
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                // 对于非阻塞IO，继续尝试
+                continue;
+            }
+            Err(e) => {
+                tracing::error!("Error reading frame start marker: {}", e);
+                continue; // 继续尝试读取下一个字节
+            }
         }
     }
+
+    temp.extend_from_slice(&buffer);
+
+    // 步骤2: 读取帧头部(长度，通道，CRC)
+    tracing::debug!("Reading frame header...");
+
+    // 读取长度 (2字节)
+    let mut length_bytes = [0; 2];
+    if let Err(e) = reader.read_exact(&mut length_bytes) {
+        tracing::error!("Failed to read length bytes: {}", e);
+        return Err(RecvError::InvalidHeaderLength.into());
+    }
+
+    temp.extend_from_slice(&length_bytes);
+
+    let payload_size = u16::from_le_bytes(length_bytes) as usize;
+    tracing::debug!("Received packet length: {} bytes", payload_size);
+
+    // 读取通道和CRC (2字节)
+    let mut channel_crc = [0; 2];
+    if let Err(e) = reader.read_exact(&mut channel_crc) {
+        tracing::error!("Failed to read channel and CRC bytes: {}", e);
+        return Err(RecvError::InvalidHeaderChannel.into());
+    }
+
+    temp.extend_from_slice(&channel_crc);
+
+    // 步骤3: 读取有效载荷数据
+    tracing::debug!("Reading payload data ({} bytes)...", payload_size);
+    let mut recv_data = vec![];
+
+    while recv_data.len() < payload_size {
+        let mut byte = [0; 1];
+        match reader.read_exact(&mut byte) {
+            Ok(_) => {
+                recv_data.push(byte[0]);
+            }
+            Err(e) => {
+                tracing::error!("Failed to read payload data: {}", e);
+                return Err(RecvError::ReadError(e).into());
+            }
+        }
+    }
+
+    temp.extend_from_slice(&recv_data);
+
+    // 步骤4: 解析响应数据
+    if recv_data.is_empty() {
+        tracing::error!("Received empty payload data");
+        return Err(RecvError::InvalidResponse(0).into());
+    }
+
+    let response_code = recv_data[0];
+    match response_code {
+        0xD1 => {
+            tracing::info!("Received Enter command response");
+            Ok(SifliUartResponse::Enter)
+        }
+        0xD0 => {
+            tracing::info!("Received Exit command response");
+            Ok(SifliUartResponse::Exit)
+        }
+        0xD2 => {
+            // 提取数据部分，跳过响应代码和最后的校验字节
+            let data = if recv_data.len() > 1 {
+                recv_data[1..recv_data.len() - 1].to_vec()
+            } else {
+                Vec::new()
+            };
+            tracing::info!(
+                "Received memory read response, data length: {} bytes",
+                data.len()
+            );
+            Ok(SifliUartResponse::MEMRead { data })
+        }
+        0xD3 => {
+            tracing::info!("Received memory write response");
+            Ok(SifliUartResponse::MEMWrite)
+        }
+        _ => {
+            tracing::error!("Received unknown response code: {:#04X}", response_code);
+            Err(RecvError::InvalidResponse(response_code).into())
+        }
+    }
+}
 
 impl<T: SifliTool> SifliDebug for T {
     fn debug_command(
@@ -469,12 +472,8 @@ impl<T: SifliTool> SifliDebug for T {
 
         Ok(())
     }
-    
-    fn debug_write_core_reg(
-        &mut self,
-        addr: u16,
-        value: u32,
-    ) -> Result<(), std::io::Error> {
+
+    fn debug_write_core_reg(&mut self, addr: u16, value: u32) -> Result<(), std::io::Error> {
         self.debug_write_word32(Dcrdr::get_mmio_address() as u32, value)?;
 
         let mut dcrsr_val = Dcrsr(0);
@@ -488,7 +487,7 @@ impl<T: SifliTool> SifliDebug for T {
         Ok(())
     }
 
-    fn debug_step(&mut self)-> Result<(), std::io::Error> {
+    fn debug_step(&mut self) -> Result<(), std::io::Error> {
         // 这里我们忽略了很多必要的检查，请参考probe-rs源码
         let mut value = Dhcsr(0);
         // Leave halted state.
@@ -504,7 +503,7 @@ impl<T: SifliTool> SifliDebug for T {
         std::thread::sleep(Duration::from_millis(10));
         Ok(())
     }
-    
+
     fn debug_run(&mut self) -> Result<(), std::io::Error> {
         self.debug_step()?;
         let mut value = Dhcsr(0);
@@ -513,11 +512,11 @@ impl<T: SifliTool> SifliDebug for T {
         value.enable_write();
 
         self.debug_write_word32(Dhcsr::get_mmio_address() as u32, value.into())?;
-        
+
         std::thread::sleep(Duration::from_millis(10));
         Ok(())
     }
-    
+
     fn debug_halt(&mut self) -> Result<(), std::io::Error> {
         let mut value = Dhcsr(0);
         value.set_c_halt(true);

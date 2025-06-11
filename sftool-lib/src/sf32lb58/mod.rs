@@ -1,10 +1,10 @@
 //! SF32LB58 芯片特定实现模块
 
-pub mod write_flash;
-pub mod read_flash;
 pub mod erase_flash;
+pub mod read_flash;
 pub mod reset;
 pub mod speed;
+pub mod write_flash;
 
 use crate::{SifliTool, SifliToolBase, SifliToolTrait};
 use serialport::SerialPort;
@@ -12,7 +12,7 @@ use serialport::SerialPort;
 pub struct SF32LB58Tool {
     pub base: SifliToolBase,
     pub port: Box<dyn SerialPort>,
-    pub step: i32
+    pub step: i32,
 }
 
 impl SifliTool for SF32LB58Tool {
@@ -41,10 +41,8 @@ impl SifliToolTrait for SF32LB58Tool {
     fn set_speed(&mut self, _baud: u32) -> Result<(), std::io::Error> {
         todo!("SF32LB58Tool::set_speed not implemented yet")
     }
-    
+
     fn soft_reset(&mut self) -> Result<(), std::io::Error> {
         todo!("SF32LB58Tool::soft_reset not implemented yet")
     }
 }
-
-

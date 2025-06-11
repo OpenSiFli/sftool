@@ -1,31 +1,31 @@
 //! SF32LB52 芯片特定实现模块
 
-pub mod write_flash;
-pub mod read_flash;
 pub mod erase_flash;
 pub mod ram_command;
+pub mod read_flash;
 pub mod reset;
-pub mod speed;
 pub mod sifli_debug;
+pub mod speed;
+pub mod write_flash;
 
-use crate::{SifliToolBase, SifliTool, SifliToolTrait};
 use self::sifli_debug::SifliDebug;
+use crate::sf32lb52::ram_command::DownloadStub;
+use crate::{SifliTool, SifliToolBase, SifliToolTrait};
 use serialport::SerialPort;
 use std::time::Duration;
-use crate::sf32lb52::ram_command::DownloadStub;
 
 pub struct SF32LB52Tool {
     pub base: SifliToolBase,
     pub port: Box<dyn SerialPort>,
-    pub step: i32
+    pub step: i32,
 }
 
 impl SF32LB52Tool {
     /// 执行全部flash擦除的内部方法
     pub fn internal_erase_all(&mut self, address: u32) -> Result<(), std::io::Error> {
-        use ram_command::{Command, RamCommand};
         use indicatif::{ProgressBar, ProgressStyle};
-        
+        use ram_command::{Command, RamCommand};
+
         let progress_bar = ProgressBar::new_spinner();
         if !self.base().quiet {
             progress_bar.set_style(
@@ -47,9 +47,13 @@ impl SF32LB52Tool {
         // 等待擦除完成
         loop {
             let elapsed = now.elapsed().unwrap().as_millis();
-            if elapsed > 30000 {  // 擦除可能需要更长时间
+            if elapsed > 30000 {
+                // 擦除可能需要更长时间
                 tracing::error!("response string is {}", String::from_utf8_lossy(&buffer));
-                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Erase timeout"));
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "Erase timeout",
+                ));
             }
 
             let mut byte = [0];
@@ -66,10 +70,8 @@ impl SF32LB52Tool {
         }
 
         if !self.base().quiet {
-            progress_bar.finish_with_message(format!(
-                "Erase flash successfully: 0x{:08X}",
-                address
-            ));
+            progress_bar
+                .finish_with_message(format!("Erase flash successfully: 0x{:08X}", address));
         }
 
         Ok(())
@@ -77,8 +79,8 @@ impl SF32LB52Tool {
 
     /// 执行区域擦除的内部方法
     pub fn internal_erase_region(&mut self, address: u32, len: u32) -> Result<(), std::io::Error> {
-        use ram_command::{Command, RamCommand};
         use indicatif::{ProgressBar, ProgressStyle};
+        use ram_command::{Command, RamCommand};
 
         let progress_bar = ProgressBar::new(len as u64);
         if !self.base().quiet {
@@ -102,9 +104,13 @@ impl SF32LB52Tool {
         // 等待擦除完成
         loop {
             let elapsed = now.elapsed().unwrap().as_millis();
-            if elapsed > 30000 {  // 擦除可能需要更长时间
+            if elapsed > 30000 {
+                // 擦除可能需要更长时间
                 tracing::error!("response string is {}", String::from_utf8_lossy(&buffer));
-                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Erase timeout"));
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "Erase timeout",
+                ));
             }
 
             let mut byte = [0];
@@ -197,11 +203,11 @@ impl SF32LB52Tool {
     }
 
     fn download_stub_impl(&mut self) -> Result<(), std::io::Error> {
-        use indicatif::{ProgressBar, ProgressStyle};
         use self::sifli_debug::SifliUartCommand;
         use crate::ram_stub::{self, CHIP_FILE_NAME};
-        use probe_rs::{MemoryMappedRegister};
-        use probe_rs::architecture::arm::core::armv7m::{Demcr, Aircr};
+        use indicatif::{ProgressBar, ProgressStyle};
+        use probe_rs::MemoryMappedRegister;
+        use probe_rs::architecture::arm::core::armv7m::{Aircr, Demcr};
         use probe_rs::architecture::arm::core::registers::cortex_m::{PC, SP};
 
         let spinner = ProgressBar::new_spinner();
@@ -248,7 +254,8 @@ impl SF32LB52Tool {
         );
         let Some(stub) = stub else {
             if !self.base.quiet {
-                spinner.finish_with_message("No stub file found for the given chip and memory type");
+                spinner
+                    .finish_with_message("No stub file found for the given chip and memory type");
             }
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
@@ -291,7 +298,6 @@ impl SF32LB52Tool {
 
         Ok(())
     }
-    
 }
 
 impl SifliTool for SF32LB52Tool {
@@ -306,7 +312,7 @@ impl SifliTool for SF32LB52Tool {
         let mut tool = Box::new(Self {
             base,
             port,
-            step: 0
+            step: 0,
         });
         tool.download_stub().expect("Failed to download stub");
         tool
@@ -329,12 +335,12 @@ impl SifliToolTrait for SF32LB52Tool {
     fn step_mut(&mut self) -> &mut i32 {
         &mut self.step
     }
-    
+
     fn set_speed(&mut self, baud: u32) -> Result<(), std::io::Error> {
         use crate::speed::SpeedTrait;
         SpeedTrait::set_speed(self, baud)
     }
-    
+
     fn soft_reset(&mut self) -> Result<(), std::io::Error> {
         use crate::reset::Reset;
         Reset::soft_reset(self)

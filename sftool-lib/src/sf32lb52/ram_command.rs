@@ -1,5 +1,5 @@
 use crate::sf32lb52::SF32LB52Tool;
-use crate::sf32lb52::sifli_debug::{SifliUartCommand, SifliDebug};
+use crate::sf32lb52::sifli_debug::{SifliDebug, SifliUartCommand};
 use std::io::{Read, Write};
 use std::str::FromStr;
 use strum::{Display, EnumString};
@@ -176,10 +176,7 @@ impl DownloadStub for SF32LB52Tool {
                 buffer.clear();
             }
             if retry_count > RETRY {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Timeout",
-                ));
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timeout"));
             }
 
             let mut byte = [0];

@@ -1,10 +1,9 @@
 use super::SF32LB52Tool;
 use crate::erase_flash::EraseFlashTrait;
-use crate::{utils, EraseFlashParams, EraseRegionParams};
+use crate::{EraseFlashParams, EraseRegionParams, utils};
 
 impl EraseFlashTrait for SF32LB52Tool {
     fn erase_flash(&mut self, params: &EraseFlashParams) -> Result<(), std::io::Error> {
-
         // 解析擦除地址 (这是擦除全部flash的命令，使用EraseAll)
         let address = utils::Utils::str_to_u32(&params.address)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
@@ -19,7 +18,10 @@ impl EraseFlashTrait for SF32LB52Tool {
             let Some((addr_str, size_str)) = region_spec.split_once(':') else {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    format!("Invalid region format: {}. Expected: address:size", region_spec),
+                    format!(
+                        "Invalid region format: {}. Expected: address:size",
+                        region_spec
+                    ),
                 ));
             };
 
