@@ -1,5 +1,5 @@
 use super::ram_command::{Command, RamCommand};
-use crate::{SifliTool, SubcommandParams, utils};
+use crate::{utils, ReadFlashParams};
 use crate::read_flash::ReadFlashTrait;
 use super::SF32LB52Tool;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -47,15 +47,8 @@ fn parse_file_info(file_spec: &str) -> Result<ReadFlashFile, std::io::Error> {
 }
 
 impl ReadFlashTrait for SF32LB52Tool {
-    fn read_flash(&mut self) -> Result<(), std::io::Error> {
-        let mut step = self.step();
-
-        let SubcommandParams::ReadFlashParams(params) = self.subcommand_params().clone() else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Invalid params for read flash",
-            ));
-        };
+    fn read_flash(&mut self, params: &ReadFlashParams) -> Result<(), std::io::Error> {
+        let mut step = self.step;
 
         let mut read_flash_files: Vec<ReadFlashFile> = Vec::new();
 
@@ -67,7 +60,7 @@ impl ReadFlashTrait for SF32LB52Tool {
         // 处理每个读取
         for file in read_flash_files {
             let progress_bar = ProgressBar::new(file.size as u64);
-            if !self.base().quiet {
+            if !self.base.quiet {
                 progress_bar.set_style(
                     ProgressStyle::default_bar()
                         .template("[{prefix}] Reading at {msg}... {wide_bar} {bytes_per_sec} {percent_precise}%")
@@ -98,7 +91,7 @@ impl ReadFlashTrait for SF32LB52Tool {
                 }
 
                 let mut byte = [0];
-                let ret = self.port().read_exact(&mut byte);
+                let ret = self.port.read_exact(&mut byte);
                 if ret.is_err() {
                     continue;
                 }
@@ -126,11 +119,11 @@ impl ReadFlashTrait for SF32LB52Tool {
                 } else {
                     READ_SIZE
                 };
-                self.port().read_exact(&mut read_buffer[..read_size])?;
+                self.port.read_exact(&mut read_buffer[..read_size])?;
                 current_file.write_all(&read_buffer[..read_size])?;
                 total_read += read_size as u32;
 
-                if !self.base().quiet {
+                if !self.base.quiet {
                     progress_bar.inc(read_size as u64);
                 }
             }
@@ -138,7 +131,7 @@ impl ReadFlashTrait for SF32LB52Tool {
             current_file.seek(std::io::SeekFrom::Start(0))?;
             let read_file_crc32 = utils::Utils::get_file_crc32(&current_file)?;
             let mut read_crc_str_bytes = [0u8; 14];
-            self.port().read_exact(&mut read_crc_str_bytes)?;
+            self.port.read_exact(&mut read_crc_str_bytes)?;
             let read_crc_str = String::from_utf8_lossy(&read_crc_str_bytes);
             let read_crc32 = utils::Utils::str_to_u32(&read_crc_str[4..])
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
@@ -157,7 +150,7 @@ impl ReadFlashTrait for SF32LB52Tool {
             current_file.seek(std::io::SeekFrom::Start(0))?;
             std::io::copy(&mut current_file, &mut output_file)?;
 
-            if !self.base().quiet {
+            if !self.base.quiet {
                 progress_bar.finish_with_message(format!(
                     "Read flash successfully: {} (0x{:08X})",
                     file.file_path, file.address

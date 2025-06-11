@@ -1,6 +1,5 @@
 use crate::sf32lb52::SF32LB52Tool;
 use crate::sf32lb52::sifli_debug::{SifliUartCommand, SifliDebug};
-use crate::SifliTool;
 use std::io::{Read, Write};
 use std::str::FromStr;
 use strum::{Display, EnumString};
@@ -153,11 +152,11 @@ impl RamCommand for SF32LB52Tool {
 impl DownloadStub for SF32LB52Tool {
     fn download_stub(&mut self) -> Result<(), std::io::Error> {
         // Use SifliTool trait methods
-        SifliTool::attempt_connect(self)?;
-        SifliTool::download_stub_impl(self)?;
+        self.attempt_connect()?;
+        self.download_stub_impl()?;
 
         std::thread::sleep(std::time::Duration::from_millis(100));
-        self.port().clear(serialport::ClearBuffer::All)?;
+        self.port.clear(serialport::ClearBuffer::All)?;
         self.debug_command(SifliUartCommand::Exit)?;
 
         // 1s之内串口发b"\r\n"字符串，并等待是否有"msh >"回复，200ms发一次b"\r\n"
@@ -165,15 +164,15 @@ impl DownloadStub for SF32LB52Tool {
         let mut now = std::time::SystemTime::now();
         const RETRY: u32 = 5;
         let mut retry_count = 0;
-        self.port().write_all(b"\r\n")?;
-        self.port().flush()?;
+        self.port.write_all(b"\r\n")?;
+        self.port.flush()?;
         loop {
             let elapsed = now.elapsed().unwrap().as_millis();
             if elapsed > 200 {
                 retry_count += 1;
                 now = std::time::SystemTime::now();
-                self.port().write_all(b"\r\n")?;
-                self.port().flush()?;
+                self.port.write_all(b"\r\n")?;
+                self.port.flush()?;
                 buffer.clear();
             }
             if retry_count > RETRY {
@@ -184,7 +183,7 @@ impl DownloadStub for SF32LB52Tool {
             }
 
             let mut byte = [0];
-            let ret = self.port().read_exact(&mut byte);
+            let ret = self.port.read_exact(&mut byte);
             if ret.is_err() {
                 continue;
             }

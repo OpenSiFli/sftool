@@ -8,35 +8,19 @@ pub mod reset;
 pub mod speed;
 pub mod sifli_debug;
 
-use crate::{SifliToolBase, SubcommandParams, SifliTool};
+use crate::{SifliToolBase, SifliTool, SifliToolTrait};
 use self::sifli_debug::SifliDebug;
 use serialport::SerialPort;
 use std::time::Duration;
+use crate::sf32lb52::ram_command::DownloadStub;
 
 pub struct SF32LB52Tool {
     pub base: SifliToolBase,
     pub port: Box<dyn SerialPort>,
-    pub step: i32,
-    pub subcommand_params: SubcommandParams,
+    pub step: i32
 }
 
 impl SF32LB52Tool {
-    pub fn new(base: SifliToolBase, subcommand_params: SubcommandParams) -> Box<dyn SifliTool> {
-        let mut port = serialport::new(&base.port_name, 1000000)
-            .timeout(Duration::from_secs(5))
-            .open()
-            .unwrap();
-        port.write_request_to_send(false).unwrap();
-        std::thread::sleep(Duration::from_millis(100));
-        
-        Box::new(Self {
-            base,
-            port,
-            step: 0,
-            subcommand_params,
-        })
-    }
-
     /// 执行全部flash擦除的内部方法
     pub fn internal_erase_all(&mut self, address: u32) -> Result<(), std::io::Error> {
         use ram_command::{Command, RamCommand};
@@ -145,45 +129,11 @@ impl SF32LB52Tool {
 
         Ok(())
     }
-}
 
-impl SifliTool for SF32LB52Tool {
-    fn port(&mut self) -> &mut Box<dyn SerialPort> {
-        &mut self.port
-    }
-
-    fn base(&self) -> &SifliToolBase {
-        &self.base
-    }
-
-    fn step(&self) -> i32 {
-        self.step
-    }
-
-    fn step_mut(&mut self) -> &mut i32 {
-        &mut self.step
-    }
-
-    fn subcommand_params(&self) -> &SubcommandParams {
-        &self.subcommand_params
-    }
-
-    fn execute_command(&mut self) -> Result<(), std::io::Error> {
-        use crate::{write_flash, read_flash, erase_flash};
-        
-        match &self.subcommand_params {
-            SubcommandParams::WriteFlashParams(_) => write_flash::WriteFlashTrait::write_flash(self),
-            SubcommandParams::ReadFlashParams(_) => read_flash::ReadFlashTrait::read_flash(self),
-            SubcommandParams::EraseFlashParams(_) => erase_flash::EraseFlashTrait::erase_flash(self),
-            SubcommandParams::EraseRegionParams(_) => erase_flash::EraseFlashTrait::erase_region(self),
-        }
-    }
-    
-    
     fn attempt_connect(&mut self) -> Result<(), std::io::Error> {
         use self::sifli_debug::{SifliUartCommand, SifliUartResponse};
         use crate::Operation;
-        
+
         let infinite_attempts = self.base.connect_attempts <= 0;
         let mut remaining_attempts = if infinite_attempts {
             None
@@ -245,7 +195,7 @@ impl SifliTool for SF32LB52Tool {
             "Failed to connect to the chip",
         ))
     }
-    
+
     fn download_stub_impl(&mut self) -> Result<(), std::io::Error> {
         use indicatif::{ProgressBar, ProgressStyle};
         use self::sifli_debug::SifliUartCommand;
@@ -253,7 +203,7 @@ impl SifliTool for SF32LB52Tool {
         use probe_rs::{MemoryMappedRegister};
         use probe_rs::architecture::arm::core::armv7m::{Demcr, Aircr};
         use probe_rs::architecture::arm::core::registers::cortex_m::{PC, SP};
-        
+
         let spinner = ProgressBar::new_spinner();
         if !self.base.quiet {
             spinner.enable_steady_tick(std::time::Duration::from_millis(100));
@@ -262,14 +212,14 @@ impl SifliTool for SF32LB52Tool {
             spinner.set_message("Download stub...");
         }
         self.step = self.step.wrapping_add(1);
-        
+
         // 1. reset and halt
         //    1.1. reset_catch_set
         let demcr = self.debug_read_word32(Demcr::get_mmio_address() as u32)?;
         let mut demcr = Demcr(demcr);
         demcr.set_vc_corereset(true);
         self.debug_write_word32(Demcr::get_mmio_address() as u32, demcr.into())?;
-        
+
         // 1.2. reset_system
         let mut aircr = Aircr(0);
         aircr.vectkey();
@@ -342,9 +292,42 @@ impl SifliTool for SF32LB52Tool {
         Ok(())
     }
     
-    fn download_stub(&mut self) -> Result<(), std::io::Error> {
-        use self::ram_command::DownloadStub;
-        DownloadStub::download_stub(self)
+}
+
+impl SifliTool for SF32LB52Tool {
+    fn create_tool(base: SifliToolBase) -> Box<dyn SifliTool> {
+        let mut port = serialport::new(&base.port_name, 1000000)
+            .timeout(Duration::from_secs(5))
+            .open()
+            .unwrap();
+        port.write_request_to_send(false).unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+
+        let mut tool = Box::new(Self {
+            base,
+            port,
+            step: 0
+        });
+        tool.download_stub().expect("Failed to download stub");
+        tool
+    }
+}
+
+impl SifliToolTrait for SF32LB52Tool {
+    fn port(&mut self) -> &mut Box<dyn SerialPort> {
+        &mut self.port
+    }
+
+    fn base(&self) -> &SifliToolBase {
+        &self.base
+    }
+
+    fn step(&self) -> i32 {
+        self.step
+    }
+
+    fn step_mut(&mut self) -> &mut i32 {
+        &mut self.step
     }
     
     fn set_speed(&mut self, baud: u32) -> Result<(), std::io::Error> {

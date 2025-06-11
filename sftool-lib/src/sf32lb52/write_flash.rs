@@ -2,7 +2,7 @@ use super::ram_command::{Command, RamCommand, Response};
 use super::SF32LB52Tool;
 use crate::utils::{FileType, Utils, ELF_MAGIC};
 use crate::write_flash::WriteFlashTrait;
-use crate::SubcommandParams;
+use crate::WriteFlashParams;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
@@ -24,16 +24,16 @@ fn detect_file_type(path: &Path) -> Result<FileType, std::io::Error> {
             _ => {} // 如果扩展名无法识别，继续检查MAGIC
         }
     }
-    
+
     // 如果没有可识别的扩展名，则检查文件MAGIC
     let mut file = File::open(path)?;
     let mut magic = [0u8; 4];
     file.read_exact(&mut magic)?;
-    
+
     if magic == ELF_MAGIC {
         return Ok(FileType::Elf);
     }
-    
+
     Err(std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
         "Unrecognized file type",
@@ -60,26 +60,17 @@ fn parse_file_info(file_str: &str) -> Result<Vec<WriteFlashFile>, std::io::Error
     let file_type = detect_file_type(Path::new(parts[0]))?;
 
     match file_type {
-        FileType::Hex => {
-            Utils::hex_to_bin(Path::new(parts[0]))
-        }
-        FileType::Elf => {
-            Utils::elf_to_bin(Path::new(parts[0]))
-        }
-        FileType::Bin => {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "For binary files, please use the <file@address> format",
-            ))
-        }
+        FileType::Hex => Utils::hex_to_bin(Path::new(parts[0])),
+        FileType::Elf => Utils::elf_to_bin(Path::new(parts[0])),
+        FileType::Bin => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "For binary files, please use the <file@address> format",
+        )),
     }
 }
 
 impl SF32LB52Tool {
-    fn erase_all(
-        &mut self,
-        write_flash_files: &[WriteFlashFile]
-    ) -> Result<(), std::io::Error> {
+    fn erase_all(&mut self, write_flash_files: &[WriteFlashFile]) -> Result<(), std::io::Error> {
         let spinner = ProgressBar::new_spinner();
         if !self.base.quiet {
             spinner.enable_steady_tick(std::time::Duration::from_millis(100));
@@ -128,24 +119,15 @@ impl SF32LB52Tool {
 }
 
 impl WriteFlashTrait for SF32LB52Tool {
-    fn write_flash(&mut self) -> Result<(), std::io::Error> {
+    fn write_flash(&mut self, params: &WriteFlashParams) -> Result<(), std::io::Error> {
         let mut step = self.step;
-
-        let SubcommandParams::WriteFlashParams(params) = self.subcommand_params.clone() else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Invalid params for write flash",
-            ));
-        };
 
         let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
 
         let packet_size = if self.base.compat { 256 } else { 128 * 1024 };
 
         for file in params.file_path.iter() {
-            write_flash_files.append(
-                &mut parse_file_info(file)?
-            );
+            write_flash_files.append(&mut parse_file_info(file)?);
         }
 
         if params.erase_all {
@@ -157,9 +139,7 @@ impl WriteFlashTrait for SF32LB52Tool {
             let download_bar = ProgressBar::new(file.file.metadata()?.len());
 
             let download_bar_template = ProgressStyle::default_bar()
-                .template(
-                    "[{prefix}] {msg} {wide_bar} {bytes_per_sec} {percent_precise}%",
-                )
+                .template("[{prefix}] {msg} {wide_bar} {bytes_per_sec} {percent_precise}%")
                 .unwrap()
                 .progress_chars("=>-");
 
@@ -277,11 +257,7 @@ impl WriteFlashTrait for SF32LB52Tool {
             }
             // verify
             if params.verify {
-                self.verify(
-                    file.address,
-                    file.file.metadata()?.len() as u32,
-                    file.crc32
-                )?;
+                self.verify(file.address, file.file.metadata()?.len() as u32, file.crc32)?;
             }
         }
         Ok(())

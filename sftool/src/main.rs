@@ -1,8 +1,9 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use sftool_lib::{Operation, SifliToolBase, ChipType, create_sifli_tool};
-use strum::{Display, EnumString};
-use std::process;
 use serialport;
+use sftool_lib::{ChipType, Operation, SifliToolBase, create_sifli_tool};
+use std::io::ErrorKind;
+use std::process;
+use strum::{Display, EnumString};
 
 #[derive(EnumString, Display, Debug, Clone, ValueEnum)]
 enum Memory {
@@ -119,13 +120,13 @@ struct EraseRegion {
 }
 
 /// Convert macOS /dev/tty.* ports to /dev/cu.* ports
-/// 
+///
 /// On macOS, /dev/tty.* ports should be avoided in favor of /dev/cu.* ports
 /// This function automatically converts any /dev/tty.* path to its /dev/cu.* equivalent
-/// 
+///
 /// # Parameters
 /// * `port_name` - The original port name
-/// 
+///
 /// # Returns
 /// * The corrected port name
 fn normalize_mac_port_name(port_name: &str) -> String {
@@ -139,10 +140,10 @@ fn normalize_mac_port_name(port_name: &str) -> String {
 }
 
 /// Check if the specified serial port is available
-/// 
+///
 /// # Parameters
 /// * `port_name` - The name of the serial port to check
-/// 
+///
 /// # Returns
 /// * `Result<(), String>` - Returns Ok(()) if the port is available; otherwise returns an Err with error message
 fn check_port_available(port_name: &str) -> Result<(), String> {
@@ -168,34 +169,33 @@ fn check_port_available(port_name: &str) -> Result<(), String> {
                 Ok(())
             } else {
                 // If the port doesn't exist, return an error and list all available ports
-                let available_ports: Vec<String> = filtered_ports.iter()
-                    .map(|p| p.port_name.clone())
-                    .collect();
-                
+                let available_ports: Vec<String> =
+                    filtered_ports.iter().map(|p| p.port_name.clone()).collect();
+
                 Err(format!(
-                    "The specified port '{}' does not exist. Available ports: {}", 
-                    port_name, 
-                    if available_ports.is_empty() { 
-                        "No available ports".to_string() 
-                    } else { 
-                        available_ports.join(", ") 
+                    "The specified port '{}' does not exist. Available ports: {}",
+                    port_name,
+                    if available_ports.is_empty() {
+                        "No available ports".to_string()
+                    } else {
+                        available_ports.join(", ")
                     }
                 ))
             }
-        },
+        }
         Err(e) => Err(format!("Failed to get available ports list: {}", e)),
     }
 }
 
-fn main() {    // Initialize tracing, set log level from environment variable
+fn main() {
+    // Initialize tracing, set log level from environment variable
     // Log level can be controlled by setting the RUST_LOG environment variable, e.g.:
     // RUST_LOG=debug, RUST_LOG=sftool_lib=trace, RUST_LOG=info
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("off"));
-    
-    tracing_subscriber::fmt()
-        .with_env_filter(env_filter)
-        .init();    let mut args = Cli::parse();
+
+    tracing_subscriber::fmt().with_env_filter(env_filter).init();
+    let mut args = Cli::parse();
 
     // On macOS, convert /dev/tty.* to /dev/cu.*
     args.port = normalize_mac_port_name(&args.port);
@@ -207,7 +207,7 @@ fn main() {    // Initialize tracing, set log level from environment variable
     }
 
     let chip_type = args.chip;
-    
+
     let mut siflitool = create_sifli_tool(
         chip_type,
         SifliToolBase {
@@ -219,52 +219,50 @@ fn main() {    // Initialize tracing, set log level from environment variable
             baud: args.baud,
             compat: args.compat,
         },
-        match args.command {
-            Some(Commands::WriteFlash(ref write_flash)) => {
-                sftool_lib::SubcommandParams::WriteFlashParams(sftool_lib::WriteFlashParams {
-                    file_path: write_flash.files.clone(),
-                    verify: write_flash.verify,
-                    no_compress: write_flash.no_compress,
-                    erase_all: write_flash.erase_all,
-                })
-            }
-            Some(Commands::ReadFlash(ref read_flash)) => {
-                sftool_lib::SubcommandParams::ReadFlashParams(sftool_lib::ReadFlashParams {
-                    file_path: read_flash.files.clone(),
-                })
-            }
-            Some(Commands::EraseFlash(ref erase_flash)) => {
-                sftool_lib::SubcommandParams::EraseFlashParams(sftool_lib::EraseFlashParams {
-                    address: erase_flash.address.clone(),
-                })
-            }
-            Some(Commands::EraseRegion(ref erase_region)) => {
-                sftool_lib::SubcommandParams::EraseRegionParams(sftool_lib::EraseRegionParams {
-                    region: erase_region.region.clone(),
-                })
-            }
-            None => {
-                eprintln!("Error: No command specified");
-                process::exit(1);
-            }
-        },
     );
 
-    if let Err(e) = siflitool.download_stub() {
-        eprintln!("Error: {:?}", e);
-        process::exit(1);
-    }
-    
     if args.baud != 1000000 {
         siflitool.set_speed(args.baud).unwrap();
     }
 
-    let res = siflitool.execute_command();
+    let res = match args.command {
+        Some(Commands::WriteFlash(params)) => {
+            let write_params = sftool_lib::WriteFlashParams {
+                file_path: params.files,
+                verify: params.verify,
+                no_compress: params.no_compress,
+                erase_all: params.erase_all,
+            };
+            siflitool.write_flash(&write_params)
+        }
+        Some(Commands::ReadFlash(params)) => {
+            let read_params = sftool_lib::ReadFlashParams {
+                file_path: params.files,
+            };
+            siflitool.read_flash(&read_params)
+        }
+        Some(Commands::EraseFlash(params)) => {
+            let erase_params = sftool_lib::EraseFlashParams {
+                address: params.address.clone(),
+            };
+            siflitool.erase_flash(&erase_params)
+        }
+        Some(Commands::EraseRegion(params)) => {
+            let erase_region_params = sftool_lib::EraseRegionParams {
+                region: params.region.clone(),
+            };
+            siflitool.erase_region(&erase_region_params)
+        }
+        None => Err(std::io::Error::new(
+            ErrorKind::InvalidInput,
+            "No command specified. Use --help to see available commands.",
+        )),
+    };
 
     if let Err(e) = res {
         eprintln!("Error: {:?}", e);
     }
-    
+
     if args.after != Operation::None {
         siflitool.soft_reset().unwrap();
     }
