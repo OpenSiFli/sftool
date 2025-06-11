@@ -5,11 +5,11 @@ name: Builder
 # Controls when the workflow will run
 on:
   push:
-    branches: [main]
+    branches: [master]
     tags: ['*']
   workflow_dispatch:
   pull_request:
-    branches: [main]
+    branches: [master]
 
 permissions:
   contents: write
