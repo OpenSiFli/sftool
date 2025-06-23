@@ -22,8 +22,6 @@ impl RamCommand for SF32LB58Tool {
 
 impl DownloadStub for SF32LB58Tool {
     fn download_stub(&mut self) -> Result<(), std::io::Error> {
-        // SF32LB58的具体实现可能与SF32LB52不同
-        // 这里先提供一个基础实现，可以根据具体需求调整
-        todo!("SF32LB58Tool::download_stub not implemented yet")
+        self.download_stub_impl()
     }
 }
