@@ -6,6 +6,9 @@ pub mod speed;
 pub mod utils;
 pub mod write_flash;
 
+// 公共模块，包含可复用的逻辑
+pub mod common;
+
 // 芯片特定的实现模块
 pub mod sf32lb52;
 pub mod sf32lb56;

@@ -1,6 +1,7 @@
 //! SF32LB56 芯片特定实现模块
 
 pub mod erase_flash;
+pub mod ram_command;
 pub mod read_flash;
 pub mod reset;
 pub mod speed;
