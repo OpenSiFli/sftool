@@ -339,6 +339,7 @@ impl SifliToolTrait for SF32LB58Tool {
     }
 
     fn soft_reset(&mut self) -> Result<(), std::io::Error> {
-        todo!("SF32LB58Tool::soft_reset not implemented yet")
+        use crate::reset::Reset;
+        Reset::soft_reset(self)
     }
 }

@@ -1,4 +1,4 @@
-use crate::sf32lb52::write_flash::WriteFlashFile;
+use crate::common::write_flash::WriteFlashFile;
 use crc::Algorithm;
 use memmap2::Mmap;
 use std::fs::File;
