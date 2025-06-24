@@ -240,7 +240,7 @@ fn main() {
                     }
                 }
             }
-            
+
             let write_params = sftool_lib::WriteFlashParams {
                 files,
                 verify: params.verify,
@@ -263,10 +263,8 @@ fn main() {
                     }
                 }
             }
-            
-            let read_params = sftool_lib::ReadFlashParams {
-                files,
-            };
+
+            let read_params = sftool_lib::ReadFlashParams { files };
             siflitool.read_flash(&read_params)
         }
         Some(Commands::EraseFlash(params)) => {
@@ -278,10 +276,8 @@ fn main() {
                     std::process::exit(1);
                 }
             };
-            
-            let erase_params = sftool_lib::EraseFlashParams {
-                address,
-            };
+
+            let erase_params = sftool_lib::EraseFlashParams { address };
             siflitool.erase_flash(&erase_params)
         }
         Some(Commands::EraseRegion(params)) => {
@@ -298,10 +294,8 @@ fn main() {
                     }
                 }
             }
-            
-            let erase_region_params = sftool_lib::EraseRegionParams {
-                regions,
-            };
+
+            let erase_region_params = sftool_lib::EraseRegionParams { regions };
             siflitool.erase_region(&erase_region_params)
         }
         None => Err(std::io::Error::new(

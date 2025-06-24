@@ -144,7 +144,9 @@ impl Utils {
     }
 
     /// 将HEX文件转换为WriteFlashFile
-    pub fn hex_to_write_flash_files(hex_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
+    pub fn hex_to_write_flash_files(
+        hex_file: &Path,
+    ) -> Result<Vec<WriteFlashFile>, std::io::Error> {
         let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
 
         let file = std::fs::File::open(hex_file)?;
@@ -234,7 +236,9 @@ impl Utils {
     }
 
     /// 将ELF文件转换为WriteFlashFile  
-    pub fn elf_to_write_flash_files(elf_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
+    pub fn elf_to_write_flash_files(
+        elf_file: &Path,
+    ) -> Result<Vec<WriteFlashFile>, std::io::Error> {
         let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
         const SECTOR_SIZE: u32 = 0x1000; // 扇区大小
         const FILL_BYTE: u8 = 0xFF; // 填充字节
@@ -351,11 +355,19 @@ impl Utils {
             ));
         };
 
-        let address = Self::str_to_u32(address_str)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid address '{}': {}", address_str, e)))?;
+        let address = Self::str_to_u32(address_str).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid address '{}': {}", address_str, e),
+            )
+        })?;
 
-        let size = Self::str_to_u32(size_str)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid size '{}': {}", size_str, e)))?;
+        let size = Self::str_to_u32(size_str).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid size '{}': {}", size_str, e),
+            )
+        })?;
 
         Ok(crate::ReadFlashFile {
             file_path: file_path.to_string(),
@@ -366,8 +378,12 @@ impl Utils {
 
     /// 解析擦除地址
     pub fn parse_erase_address(address_str: &str) -> Result<u32, std::io::Error> {
-        Self::str_to_u32(address_str)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid address '{}': {}", address_str, e)))
+        Self::str_to_u32(address_str).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid address '{}': {}", address_str, e),
+            )
+        })
     }
 
     /// 解析擦除区域信息 (address:size格式)
@@ -382,18 +398,22 @@ impl Utils {
             ));
         };
 
-        let address = Self::str_to_u32(address_str)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid address '{}': {}", address_str, e)))?;
+        let address = Self::str_to_u32(address_str).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid address '{}': {}", address_str, e),
+            )
+        })?;
 
-        let size = Self::str_to_u32(size_str)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid size '{}': {}", size_str, e)))?;
+        let size = Self::str_to_u32(size_str).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid size '{}': {}", size_str, e),
+            )
+        })?;
 
-        Ok(crate::EraseRegionFile {
-            address,
-            size,
-        })
+        Ok(crate::EraseRegionFile { address, size })
     }
-
 }
 
 #[cfg(test)]
@@ -432,7 +452,7 @@ mod tests {
         assert_eq!(&file_data[0..4], &[0x01, 0x02, 0x03, 0x04]);
         // Gap between 0x04 and 0x1000 should be filled with 0xFF
         assert!(file_data[4..0x1000].iter().all(|&b| b == 0xFF));
-        // Last 4 bytes should be: 05 06 07 08  
+        // Last 4 bytes should be: 05 06 07 08
         assert_eq!(&file_data[0x1000..0x1004], &[0x05, 0x06, 0x07, 0x08]);
     }
 
@@ -454,7 +474,7 @@ mod tests {
         assert_eq!(result[0].address, 0x00000000);
         let file_size_0 = result[0].file.metadata().unwrap().len() as usize;
         assert_eq!(file_size_0, 4);
-        
+
         let mut file_data_0 = Vec::new();
         let mut file_0 = &result[0].file;
         file_0.read_to_end(&mut file_data_0).unwrap();
@@ -464,7 +484,7 @@ mod tests {
         assert_eq!(result[1].address, 0x00010000);
         let file_size_1 = result[1].file.metadata().unwrap().len() as usize;
         assert_eq!(file_size_1, 4);
-        
+
         let mut file_data_1 = Vec::new();
         let mut file_1 = &result[1].file;
         file_1.read_to_end(&mut file_data_1).unwrap();
@@ -487,9 +507,7 @@ mod tests {
             let file_size = segment.file.metadata().unwrap().len() as usize;
             println!(
                 "Segment {}: address=0x{:08X}, size={}",
-                i,
-                segment.address,
-                file_size
+                i, segment.address, file_size
             );
         }
 
@@ -503,8 +521,7 @@ mod tests {
         let file_size = segment.file.metadata().unwrap().len() as usize;
         println!(
             "Expected size: 0x1004 ({}), Actual size: {}",
-            0x1004,
-            file_size
+            0x1004, file_size
         );
         assert_eq!(file_size, 0x1004);
 
@@ -565,11 +582,20 @@ mod tests {
 
         // Verify gap filling in first segment
         // First 16 bytes should be the original data: 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10
-        assert_eq!(&file_data_0[0..16], &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10]);
+        assert_eq!(
+            &file_data_0[0..16],
+            &[
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+                0x0F, 0x10
+            ]
+        );
         // Gap between 0x10 and 0x1000 should be filled with 0xFF
         assert!(file_data_0[16..0x1000].iter().all(|&b| b == 0xFF));
         // Last 8 bytes should be the second data block
-        assert_eq!(&file_data_0[0x1000..0x1008], &[0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18]);
+        assert_eq!(
+            &file_data_0[0x1000..0x1008],
+            &[0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18]
+        );
     }
 
     #[test]
@@ -607,12 +633,12 @@ mod tests {
         assert_eq!(Utils::parse_erase_address("0x1000").unwrap(), 0x1000);
         assert_eq!(Utils::parse_erase_address("1000").unwrap(), 1000);
         assert_eq!(Utils::parse_erase_address("1k").unwrap(), 1000);
-        
+
         // Test error cases
         assert!(Utils::parse_erase_address("invalid").is_err());
     }
 
-    #[test] 
+    #[test]
     fn test_parse_erase_region() {
         let result = Utils::parse_erase_region("0x1000:0x100").unwrap();
         assert_eq!(result.address, 0x1000);

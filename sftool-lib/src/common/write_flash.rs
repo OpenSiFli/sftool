@@ -1,6 +1,6 @@
 use crate::SifliToolTrait;
-use crate::common::ram_command::{Command, RamCommand, Response};
 use crate::WriteFlashFile;
+use crate::common::ram_command::{Command, RamCommand, Response};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::io::{BufReader, Read, Write};
 
