@@ -1,6 +1,6 @@
+use crate::SifliToolTrait;
 use crate::common::ram_command::{Command, RamCommand};
 use crate::utils::Utils;
-use crate::SifliToolTrait;
 
 /// 通用的Flash擦除操作实现
 pub struct EraseOps;

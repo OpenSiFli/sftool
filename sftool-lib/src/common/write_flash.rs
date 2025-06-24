@@ -1,6 +1,6 @@
+use crate::SifliToolTrait;
 use crate::common::ram_command::{Command, RamCommand, Response};
 use crate::utils::{ELF_MAGIC, FileType, Utils};
-use crate::SifliToolTrait;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
@@ -107,12 +107,7 @@ impl FlashWriter {
     }
 
     /// 验证数据
-    pub fn verify<T>(
-        tool: &mut T,
-        address: u32,
-        len: u32,
-        crc: u32,
-    ) -> Result<(), std::io::Error>
+    pub fn verify<T>(tool: &mut T, address: u32, len: u32, crc: u32) -> Result<(), std::io::Error>
     where
         T: SifliToolTrait + RamCommand,
     {
@@ -157,9 +152,8 @@ impl FlashWriter {
 
         if !tool.base().quiet {
             re_download_spinner.enable_steady_tick(std::time::Duration::from_millis(100));
-            re_download_spinner.set_style(
-                ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap(),
-            );
+            re_download_spinner
+                .set_style(ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap());
             re_download_spinner.set_prefix(format!("0x{:02X}", *step));
             re_download_spinner.set_message(format!(
                 "Checking whether a re-download is necessary at address 0x{:08X}...",
@@ -228,7 +222,12 @@ impl FlashWriter {
 
         // verify
         if verify {
-            Self::verify(tool, file.address, file.file.metadata()?.len() as u32, file.crc32)?;
+            Self::verify(
+                tool,
+                file.address,
+                file.file.metadata()?.len() as u32,
+                file.crc32,
+            )?;
         }
 
         Ok(())
@@ -294,7 +293,12 @@ impl FlashWriter {
 
         // verify
         if verify {
-            Self::verify(tool, file.address, file.file.metadata()?.len() as u32, file.crc32)?;
+            Self::verify(
+                tool,
+                file.address,
+                file.file.metadata()?.len() as u32,
+                file.crc32,
+            )?;
         }
 
         Ok(())

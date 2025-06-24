@@ -1,10 +1,8 @@
+use crate::common::ram_command::{CommandConfig, RamOps};
 use crate::sf32lb58::SF32LB58Tool;
-use crate::common::ram_command::{
-    RamOps, CommandConfig
-};
 
 // 重新导出公共类型
-pub use crate::common::ram_command::{Command, Response, RamCommand, DownloadStub};
+pub use crate::common::ram_command::{Command, DownloadStub, RamCommand, Response};
 
 impl RamCommand for SF32LB58Tool {
     fn command(&mut self, cmd: Command) -> Result<Response, std::io::Error> {

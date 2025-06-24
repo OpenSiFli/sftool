@@ -1,11 +1,9 @@
+use crate::common::ram_command::{CommandConfig, RamOps};
 use crate::sf32lb52::SF32LB52Tool;
 use crate::sf32lb52::sifli_debug::{SifliDebug, SifliUartCommand};
-use crate::common::ram_command::{
-    RamOps, CommandConfig
-};
 
 // 重新导出公共类型，保持向后兼容
-pub use crate::common::ram_command::{Command, Response, RamCommand, DownloadStub};
+pub use crate::common::ram_command::{Command, DownloadStub, RamCommand, Response};
 
 impl RamCommand for SF32LB52Tool {
     fn command(&mut self, cmd: Command) -> Result<Response, std::io::Error> {

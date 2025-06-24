@@ -1,6 +1,6 @@
+use crate::SifliToolTrait;
 use crate::common::ram_command::{Command, RamCommand};
 use crate::utils::Utils;
-use crate::SifliToolTrait;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::{Read, Seek, Write};
@@ -62,7 +62,7 @@ impl FlashReader {
         T: SifliToolTrait + RamCommand,
     {
         let mut step = tool.step();
-        
+
         let progress_bar = ProgressBar::new(size as u64);
         if !tool.base().quiet {
             progress_bar.set_style(
@@ -84,7 +84,7 @@ impl FlashReader {
 
         while remaining > 0 {
             let chunk_size = std::cmp::min(remaining, packet_size);
-            
+
             // 发送读取命令
             let _ = tool.command(Command::Read {
                 address: current_address,
@@ -99,7 +99,7 @@ impl FlashReader {
             while total_read < chunk_size {
                 let remaining_in_chunk = chunk_size - total_read;
                 let mut chunk_buffer = vec![0u8; remaining_in_chunk as usize];
-                
+
                 match tool.port().read_exact(&mut chunk_buffer) {
                     Ok(_) => {
                         buffer[total_read as usize..(total_read + remaining_in_chunk) as usize]

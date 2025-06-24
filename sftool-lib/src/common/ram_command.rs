@@ -1,7 +1,7 @@
+use serialport::SerialPort;
 use std::io::{Read, Write};
 use std::str::FromStr;
 use strum::{Display, EnumString};
-use serialport::SerialPort;
 
 /// 通用的RAM命令枚举，可在不同芯片间复用
 #[derive(EnumString, Display, Debug, Clone, PartialEq, Eq)]
@@ -86,7 +86,7 @@ impl RamOps {
         cmd: Command,
     ) -> Result<Response, std::io::Error> {
         tracing::debug!("command: {:?}", cmd);
-        
+
         // 发送命令
         port.write_all(cmd.to_string().as_bytes())?;
         port.flush()?;
@@ -185,7 +185,10 @@ impl RamOps {
         loop {
             let elapsed = now.elapsed().unwrap().as_millis();
             if elapsed > retry_interval_ms as u128 {
-                tracing::warn!("Wait for shell Failed, retry. buffer: {:?}", String::from_utf8_lossy(&buffer));
+                tracing::warn!(
+                    "Wait for shell Failed, retry. buffer: {:?}",
+                    String::from_utf8_lossy(&buffer)
+                );
                 port.clear(serialport::ClearBuffer::All)?;
                 tracing::debug!("Retrying to find shell prompt...");
                 std::thread::sleep(std::time::Duration::from_millis(100));
