@@ -4,5 +4,6 @@ pub mod erase_flash;
 pub mod ram_command;
 pub mod read_flash;
 pub mod reset;
+pub mod sifli_debug;
 pub mod speed;
 pub mod write_flash;
