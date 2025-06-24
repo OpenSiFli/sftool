@@ -1,6 +1,6 @@
 use super::SF32LB58Tool;
-use crate::common::write_flash::{WriteFlashFile, FlashWriter, parse_file_info};
 use crate::WriteFlashParams;
+use crate::common::write_flash::{FlashWriter, WriteFlashFile, parse_file_info};
 use crate::write_flash::WriteFlashTrait;
 
 impl WriteFlashTrait for SF32LB58Tool {
@@ -21,7 +21,13 @@ impl WriteFlashTrait for SF32LB58Tool {
             if !params.erase_all {
                 FlashWriter::write_file_incremental(self, file, &mut step, params.verify)?;
             } else {
-                FlashWriter::write_file_full_erase(self, file, &mut step, params.verify, packet_size)?;
+                FlashWriter::write_file_full_erase(
+                    self,
+                    file,
+                    &mut step,
+                    params.verify,
+                    packet_size,
+                )?;
             }
         }
         Ok(())

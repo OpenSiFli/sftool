@@ -7,11 +7,11 @@ pub mod reset;
 pub mod speed;
 pub mod write_flash;
 
-use std::time::Duration;
-use std::io::Write;
+use crate::sf32lb58::ram_command::DownloadStub;
 use crate::{SifliTool, SifliToolBase, SifliToolTrait};
 use serialport::SerialPort;
-use crate::sf32lb58::ram_command::DownloadStub;
+use std::io::Write;
+use std::time::Duration;
 
 pub struct SF32LB58Tool {
     pub base: SifliToolBase,
@@ -43,39 +43,52 @@ impl SF32LB58Tool {
     const CHUNK_OVERHEAD: usize = 32 + 4;
 
     /// 发送DFU命令的通用方法
-    fn send_dfu_command(&mut self, data_len: usize, delay_ms: Option<u64>) -> Result<(), std::io::Error> {
+    fn send_dfu_command(
+        &mut self,
+        data_len: usize,
+        delay_ms: Option<u64>,
+    ) -> Result<(), std::io::Error> {
         let cmd = format!("dfu_recv {}\r", data_len);
         tracing::trace!("Sending DFU command: {}", cmd.trim());
-        
+
         self.port.write_all(cmd.as_bytes())?;
         self.port.flush()?;
-        
+
         if let Some(delay) = delay_ms {
             std::thread::sleep(Duration::from_millis(delay));
         }
-        
+
         Ok(())
     }
 
     /// 发送DFU数据的通用方法
-    fn send_dfu_data(&mut self, header: &[u8], data: &[u8], delay_ms: Option<u64>) -> Result<(), std::io::Error> {
-        tracing::trace!("Sending DFU data: header={:?}, data_len={}", header, data.len());
-        
+    fn send_dfu_data(
+        &mut self,
+        header: &[u8],
+        data: &[u8],
+        delay_ms: Option<u64>,
+    ) -> Result<(), std::io::Error> {
+        tracing::trace!(
+            "Sending DFU data: header={:?}, data_len={}",
+            header,
+            data.len()
+        );
+
         self.port.write_all(header)?;
         self.port.write_all(data)?;
         self.port.flush()?;
-        
+
         if let Some(delay) = delay_ms {
             std::thread::sleep(Duration::from_millis(delay));
         }
-        
+
         Ok(())
     }
 
     fn download_stub_impl(&mut self) -> Result<(), std::io::Error> {
-        use indicatif::{ProgressBar, ProgressStyle};
         use crate::ram_stub::{self, CHIP_FILE_NAME, SIG_PUB_FILE};
-        
+        use indicatif::{ProgressBar, ProgressStyle};
+
         tracing::info!("Starting SF32LB58 stub download process");
         self.port.clear(serialport::ClearBuffer::All)?;
 
@@ -90,14 +103,13 @@ impl SF32LB58Tool {
 
         // 1. 下载签名公钥文件 (58X_sig_pub.der)
         tracing::debug!("Loading signature public key file: {}", SIG_PUB_FILE);
-        let sig_pub_data = ram_stub::RamStubFile::get(SIG_PUB_FILE)
-            .ok_or_else(|| {
-                tracing::error!("Signature public key file not found: {}", SIG_PUB_FILE);
-                std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "58X_sig_pub.der file not found",
-                )
-            })?;
+        let sig_pub_data = ram_stub::RamStubFile::get(SIG_PUB_FILE).ok_or_else(|| {
+            tracing::error!("Signature public key file not found: {}", SIG_PUB_FILE);
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "58X_sig_pub.der file not found",
+            )
+        })?;
 
         if !self.base.quiet {
             spinner.set_message("Downloading signature key...");
@@ -107,72 +119,84 @@ impl SF32LB58Tool {
         // 2. 下载RAM stub文件
         let memory_type_key = format!("sf32lb58_{}", self.base.memory_type);
         tracing::debug!("Looking for stub file with key: {}", memory_type_key);
-        
+
         let stub_file_name = CHIP_FILE_NAME
             .get(memory_type_key.as_str())
             .ok_or_else(|| {
                 tracing::error!("No stub file found for chip type: {}", memory_type_key);
                 std::io::Error::new(
                     std::io::ErrorKind::NotFound,
-                    format!("No stub file found for the given chip and memory type: {}", memory_type_key),
+                    format!(
+                        "No stub file found for the given chip and memory type: {}",
+                        memory_type_key
+                    ),
                 )
             })?;
 
         tracing::debug!("Loading RAM stub file: {}", stub_file_name);
-        let stub = ram_stub::RamStubFile::get(stub_file_name)
-            .ok_or_else(|| {
-                tracing::error!("Stub file not found: {}", stub_file_name);
-                std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    format!("Stub file not found: {}", stub_file_name),
-                )
-            })?;
+        let stub = ram_stub::RamStubFile::get(stub_file_name).ok_or_else(|| {
+            tracing::error!("Stub file not found: {}", stub_file_name);
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Stub file not found: {}", stub_file_name),
+            )
+        })?;
 
         if !self.base.quiet {
             spinner.set_message("Downloading RAM stub...");
         }
-        
+
         // 发送下载镜像命令（flashid = 9 对应RAM stub）
         self.download_image(&stub.data, 9)?;
 
         if !self.base.quiet {
             spinner.finish_with_message("Download stub success!");
         }
-        
+
         tracing::info!("SF32LB58 stub download completed successfully");
         Ok(())
     }
 
     /// 下载引导补丁签名密钥
     fn download_boot_patch_sigkey(&mut self, sig_data: &[u8]) -> Result<(), std::io::Error> {
-        tracing::info!("Starting boot patch signature key download, size: {} bytes", sig_data.len());
+        tracing::info!(
+            "Starting boot patch signature key download, size: {} bytes",
+            sig_data.len()
+        );
 
-        let header = [DfuCommandType::Config as u8, DfuConfigType::BootPatchSig as u8];
+        let header = [
+            DfuCommandType::Config as u8,
+            DfuConfigType::BootPatchSig as u8,
+        ];
         let total_len = 2 + sig_data.len();
-        
+
         self.send_dfu_command(total_len, Some(10))?;
         self.send_dfu_data(&header, sig_data, Some(4))?;
-        
+
         tracing::debug!("Waiting for boot patch signature key response...");
         self.wait_for_ok_response(3000)?;
-        
+
         tracing::info!("Boot patch signature key downloaded successfully");
         Ok(())
     }
 
     /// 下载镜像文件
     fn download_image(&mut self, data: &[u8], flash_id: u8) -> Result<(), std::io::Error> {
-        tracing::info!("Starting image download: flash_id={}, size={} bytes", flash_id, data.len());
-        
+        tracing::info!(
+            "Starting image download: flash_id={}, size={} bytes",
+            flash_id,
+            data.len()
+        );
+
         // 1. 发送镜像头部
         self.download_image_header(data, flash_id)?;
-        
+
         // 2. 发送镜像主体
         self.download_image_body(data, flash_id)?;
-        
+
         // 3. 发送结束标志
         self.download_image_end(flash_id)?;
-        
+
         tracing::info!("Image download completed successfully");
         Ok(())
     }
@@ -180,16 +204,16 @@ impl SF32LB58Tool {
     /// 下载镜像头部
     fn download_image_header(&mut self, data: &[u8], flash_id: u8) -> Result<(), std::io::Error> {
         tracing::debug!("Downloading image header...");
-        
+
         let header = [DfuCommandType::ImageHeader as u8, flash_id];
         let total_len = 2 + Self::HDR_SIZE;
-        
+
         self.send_dfu_command(total_len, Some(10))?;
         self.send_dfu_data(&header, &data[0..Self::HDR_SIZE], None)?;
-        
+
         tracing::debug!("Waiting for image header response...");
         self.wait_for_ok_response(3000)?;
-        
+
         tracing::debug!("Image header downloaded successfully");
         Ok(())
     }
@@ -197,28 +221,33 @@ impl SF32LB58Tool {
     /// 下载镜像主体
     fn download_image_body(&mut self, data: &[u8], flash_id: u8) -> Result<(), std::io::Error> {
         tracing::debug!("Downloading image body...");
-        
+
         let body_header = [DfuCommandType::ImageBody as u8, flash_id];
         let mut offset = Self::HDR_SIZE;
         let mut chunk_count = 0;
-        
+
         while offset < data.len() {
             let remaining = data.len() - offset;
             let chunk_size = std::cmp::min(remaining, Self::CHUNK_OVERHEAD + Self::BLOCK_SIZE);
-            
-            tracing::trace!("Sending chunk {}: offset={}, size={}", chunk_count, offset, chunk_size);
-            
+
+            tracing::trace!(
+                "Sending chunk {}: offset={}, size={}",
+                chunk_count,
+                offset,
+                chunk_size
+            );
+
             let total_len = 2 + chunk_size;
             self.send_dfu_command(total_len, Some(10))?;
             self.send_dfu_data(&body_header, &data[offset..offset + chunk_size], None)?;
-            
+
             tracing::trace!("Waiting for chunk {} response...", chunk_count);
             self.wait_for_ok_response(3000)?;
-            
+
             offset += chunk_size;
             chunk_count += 1;
         }
-        
+
         tracing::debug!("Image body downloaded successfully: {} chunks", chunk_count);
         Ok(())
     }
@@ -226,15 +255,15 @@ impl SF32LB58Tool {
     /// 下载镜像结束标志
     fn download_image_end(&mut self, flash_id: u8) -> Result<(), std::io::Error> {
         tracing::debug!("Sending image end marker...");
-        
+
         let end_header = [DfuCommandType::End as u8, flash_id];
-        
+
         self.send_dfu_command(2, Some(10))?;
         self.send_dfu_data(&end_header, &[], None)?;
-        
+
         tracing::debug!("Waiting for image end response...");
         self.wait_for_ok_response(5000)?;
-        
+
         tracing::debug!("Image end marker sent successfully");
         Ok(())
     }
@@ -242,55 +271,75 @@ impl SF32LB58Tool {
     /// 等待OK响应
     fn wait_for_ok_response(&mut self, timeout_ms: u64) -> Result<(), std::io::Error> {
         use std::io::Read;
-        
+
         let mut buffer = Vec::new();
         let start_time = std::time::SystemTime::now();
         let mut last_log_time = start_time;
-        
+
         tracing::trace!("Waiting for OK response with timeout: {}ms", timeout_ms);
-        
+
         loop {
             let elapsed = start_time.elapsed().unwrap().as_millis() as u64;
             if elapsed > timeout_ms {
                 let response_str = String::from_utf8_lossy(&buffer);
-                tracing::error!("Timeout waiting for OK response after {}ms. Received: '{}'", elapsed, response_str);
+                tracing::error!(
+                    "Timeout waiting for OK response after {}ms. Received: '{}'",
+                    elapsed,
+                    response_str
+                );
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
                     format!("Timeout waiting for OK response: {}", response_str),
                 ));
             }
-            
+
             // 每秒记录一次等待状态
-            if elapsed > 0 && elapsed % 1000 == 0 && start_time.elapsed().unwrap() > last_log_time.elapsed().unwrap() + Duration::from_secs(1) {
+            if elapsed > 0
+                && elapsed % 1000 == 0
+                && start_time.elapsed().unwrap()
+                    > last_log_time.elapsed().unwrap() + Duration::from_secs(1)
+            {
                 tracing::trace!("Still waiting for response... elapsed: {}ms", elapsed);
                 last_log_time = std::time::SystemTime::now();
             }
-            
+
             let mut byte = [0];
             if let Ok(_) = self.port.read_exact(&mut byte) {
                 buffer.push(byte[0]);
-                
+
                 // 检查是否收到"OK"响应
                 if buffer.windows(2).any(|window| window == b"OK") {
                     let response_str = String::from_utf8_lossy(&buffer);
-                    tracing::trace!("Received OK response after {}ms: '{}'", elapsed, response_str);
+                    tracing::trace!(
+                        "Received OK response after {}ms: '{}'",
+                        elapsed,
+                        response_str
+                    );
                     return Ok(());
                 }
-                
+
                 // 检查是否收到"Fail"响应
                 if buffer.windows(4).any(|window| window == b"Fail") {
                     let response_str = String::from_utf8_lossy(&buffer);
-                    tracing::error!("Received Fail response after {}ms: '{}'", elapsed, response_str);
+                    tracing::error!(
+                        "Received Fail response after {}ms: '{}'",
+                        elapsed,
+                        response_str
+                    );
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         format!("Received Fail response: {}", response_str),
                     ));
                 }
-                
+
                 // 限制缓冲区大小，避免内存占用过多
                 if buffer.len() > 1024 {
                     let response_str = String::from_utf8_lossy(&buffer);
-                    tracing::warn!("Response buffer too large ({}), truncating. Content: '{}'", buffer.len(), response_str);
+                    tracing::warn!(
+                        "Response buffer too large ({}), truncating. Content: '{}'",
+                        buffer.len(),
+                        response_str
+                    );
                     buffer.drain(..512); // 保留后半部分
                 }
             }
