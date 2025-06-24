@@ -328,6 +328,72 @@ impl Utils {
         });
         Ok(())
     }
+
+    /// 解析读取文件信息 (filename@address:size格式)
+    pub fn parse_read_file_info(file_spec: &str) -> Result<crate::ReadFlashFile, std::io::Error> {
+        let Some((file_path, addr_size)) = file_spec.split_once('@') else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "Invalid format: {}. Expected: filename@address:size",
+                    file_spec
+                ),
+            ));
+        };
+
+        let Some((address_str, size_str)) = addr_size.split_once(':') else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "Invalid address:size format: {}. Expected: address:size",
+                    addr_size
+                ),
+            ));
+        };
+
+        let address = Self::str_to_u32(address_str)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid address '{}': {}", address_str, e)))?;
+
+        let size = Self::str_to_u32(size_str)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid size '{}': {}", size_str, e)))?;
+
+        Ok(crate::ReadFlashFile {
+            file_path: file_path.to_string(),
+            address,
+            size,
+        })
+    }
+
+    /// 解析擦除地址
+    pub fn parse_erase_address(address_str: &str) -> Result<u32, std::io::Error> {
+        Self::str_to_u32(address_str)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid address '{}': {}", address_str, e)))
+    }
+
+    /// 解析擦除区域信息 (address:size格式)
+    pub fn parse_erase_region(region_spec: &str) -> Result<crate::EraseRegionFile, std::io::Error> {
+        let Some((address_str, size_str)) = region_spec.split_once(':') else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "Invalid region format: {}. Expected: address:size",
+                    region_spec
+                ),
+            ));
+        };
+
+        let address = Self::str_to_u32(address_str)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid address '{}': {}", address_str, e)))?;
+
+        let size = Self::str_to_u32(size_str)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid size '{}': {}", size_str, e)))?;
+
+        Ok(crate::EraseRegionFile {
+            address,
+            size,
+        })
+    }
+
 }
 
 #[cfg(test)]
@@ -516,5 +582,49 @@ mod tests {
         assert_eq!(Utils::str_to_u32("1K").unwrap(), 1000);
         assert_eq!(Utils::str_to_u32("1m").unwrap(), 1000000);
         assert_eq!(Utils::str_to_u32("1M").unwrap(), 1000000);
+    }
+
+    #[test]
+    fn test_parse_read_file_info() {
+        let result = Utils::parse_read_file_info("output.bin@0x1000:0x100").unwrap();
+        assert_eq!(result.file_path, "output.bin");
+        assert_eq!(result.address, 0x1000);
+        assert_eq!(result.size, 0x100);
+
+        let result = Utils::parse_read_file_info("data.bin@0x20000000:1k").unwrap();
+        assert_eq!(result.file_path, "data.bin");
+        assert_eq!(result.address, 0x20000000);
+        assert_eq!(result.size, 1000);
+
+        // Test error cases
+        assert!(Utils::parse_read_file_info("invalid_format").is_err());
+        assert!(Utils::parse_read_file_info("file@0x1000").is_err()); // missing size
+        assert!(Utils::parse_read_file_info("file@invalid:0x100").is_err()); // invalid address
+    }
+
+    #[test]
+    fn test_parse_erase_address() {
+        assert_eq!(Utils::parse_erase_address("0x1000").unwrap(), 0x1000);
+        assert_eq!(Utils::parse_erase_address("1000").unwrap(), 1000);
+        assert_eq!(Utils::parse_erase_address("1k").unwrap(), 1000);
+        
+        // Test error cases
+        assert!(Utils::parse_erase_address("invalid").is_err());
+    }
+
+    #[test] 
+    fn test_parse_erase_region() {
+        let result = Utils::parse_erase_region("0x1000:0x100").unwrap();
+        assert_eq!(result.address, 0x1000);
+        assert_eq!(result.size, 0x100);
+
+        let result = Utils::parse_erase_region("0x20000000:1k").unwrap();
+        assert_eq!(result.address, 0x20000000);
+        assert_eq!(result.size, 1000);
+
+        // Test error cases
+        assert!(Utils::parse_erase_region("invalid_format").is_err());
+        assert!(Utils::parse_erase_region("0x1000").is_err()); // missing size
+        assert!(Utils::parse_erase_region("invalid:0x100").is_err()); // invalid address
     }
 }

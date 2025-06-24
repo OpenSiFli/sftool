@@ -66,19 +66,30 @@ pub struct WriteFlashFile {
     pub crc32: u32,
 }
 
-#[derive(Clone)]
 pub struct ReadFlashParams {
-    pub file_path: Vec<String>,
+    pub files: Vec<ReadFlashFile>,
+}
+
+#[derive(Debug)]
+pub struct ReadFlashFile {
+    pub file_path: String,
+    pub address: u32,
+    pub size: u32,
 }
 
 #[derive(Clone)]
 pub struct EraseFlashParams {
-    pub address: String,
+    pub address: u32,
 }
 
-#[derive(Clone)]
 pub struct EraseRegionParams {
-    pub region: Vec<String>,
+    pub regions: Vec<EraseRegionFile>,
+}
+
+#[derive(Debug)]
+pub struct EraseRegionFile {
+    pub address: u32,
+    pub size: u32,
 }
 
 pub trait SifliToolTrait {
