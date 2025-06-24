@@ -227,8 +227,22 @@ fn main() {
 
     let res = match args.command {
         Some(Commands::WriteFlash(params)) => {
+            // 在CLI中解析文件信息
+            let mut files = Vec::new();
+            for file_str in params.files.iter() {
+                match sftool_lib::utils::Utils::parse_file_info(file_str) {
+                    Ok(mut parsed_files) => {
+                        files.append(&mut parsed_files);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to parse file {}: {}", file_str, e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+            
             let write_params = sftool_lib::WriteFlashParams {
-                file_path: params.files,
+                files,
                 verify: params.verify,
                 no_compress: params.no_compress,
                 erase_all: params.erase_all,
@@ -236,20 +250,57 @@ fn main() {
             siflitool.write_flash(&write_params)
         }
         Some(Commands::ReadFlash(params)) => {
+            // 在CLI中解析读取文件信息
+            let mut files = Vec::new();
+            for file_str in params.files.iter() {
+                match sftool_lib::utils::Utils::parse_read_file_info(file_str) {
+                    Ok(parsed_file) => {
+                        files.push(parsed_file);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to parse read file {}: {}", file_str, e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+            
             let read_params = sftool_lib::ReadFlashParams {
-                file_path: params.files,
+                files,
             };
             siflitool.read_flash(&read_params)
         }
         Some(Commands::EraseFlash(params)) => {
+            // 在CLI中解析擦除地址
+            let address = match sftool_lib::utils::Utils::parse_erase_address(&params.address) {
+                Ok(addr) => addr,
+                Err(e) => {
+                    eprintln!("Failed to parse erase address {}: {}", params.address, e);
+                    std::process::exit(1);
+                }
+            };
+            
             let erase_params = sftool_lib::EraseFlashParams {
-                address: params.address.clone(),
+                address,
             };
             siflitool.erase_flash(&erase_params)
         }
         Some(Commands::EraseRegion(params)) => {
+            // 在CLI中解析擦除区域信息
+            let mut regions = Vec::new();
+            for region_str in params.region.iter() {
+                match sftool_lib::utils::Utils::parse_erase_region(region_str) {
+                    Ok(parsed_region) => {
+                        regions.push(parsed_region);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to parse erase region {}: {}", region_str, e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+            
             let erase_region_params = sftool_lib::EraseRegionParams {
-                region: params.region.clone(),
+                regions,
             };
             siflitool.erase_region(&erase_region_params)
         }
