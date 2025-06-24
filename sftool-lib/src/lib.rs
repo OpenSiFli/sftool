@@ -52,12 +52,18 @@ pub struct SifliToolBase {
     pub quiet: bool,
 }
 
-#[derive(Clone)]
 pub struct WriteFlashParams {
-    pub file_path: Vec<String>,
+    pub files: Vec<WriteFlashFile>,
     pub verify: bool,
     pub no_compress: bool,
     pub erase_all: bool,
+}
+
+#[derive(Debug)]
+pub struct WriteFlashFile {
+    pub address: u32,
+    pub file: std::fs::File,
+    pub crc32: u32,
 }
 
 #[derive(Clone)]
@@ -73,14 +79,6 @@ pub struct EraseFlashParams {
 #[derive(Clone)]
 pub struct EraseRegionParams {
     pub region: Vec<String>,
-}
-
-#[derive(Clone)]
-pub enum SubcommandParams {
-    WriteFlashParams(WriteFlashParams),
-    ReadFlashParams(ReadFlashParams),
-    EraseFlashParams(EraseFlashParams),
-    EraseRegionParams(EraseRegionParams),
 }
 
 pub trait SifliToolTrait {

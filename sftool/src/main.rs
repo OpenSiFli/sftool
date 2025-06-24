@@ -227,8 +227,22 @@ fn main() {
 
     let res = match args.command {
         Some(Commands::WriteFlash(params)) => {
+            // 在CLI中解析文件信息
+            let mut files = Vec::new();
+            for file_str in params.files.iter() {
+                match sftool_lib::utils::Utils::parse_file_info(file_str) {
+                    Ok(mut parsed_files) => {
+                        files.append(&mut parsed_files);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to parse file {}: {}", file_str, e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+            
             let write_params = sftool_lib::WriteFlashParams {
-                file_path: params.files,
+                files,
                 verify: params.verify,
                 no_compress: params.no_compress,
                 erase_all: params.erase_all,

@@ -1,4 +1,4 @@
-use crate::common::write_flash::WriteFlashFile;
+use crate::WriteFlashFile;
 use crc::Algorithm;
 use memmap2::Mmap;
 use std::fs::File;
@@ -72,29 +72,79 @@ impl Utils {
         Ok(checksum)
     }
 
-    /// Finalize a segment by calculating CRC32 and adding it to the write flash files
-    fn finalize_segment(
-        temp_file: File,
-        segment_start: u32,
-        write_flash_files: &mut Vec<WriteFlashFile>,
-    ) -> Result<(), std::io::Error> {
-        let mut file = temp_file;
-        file.seek(SeekFrom::Start(0))?;
-        let crc32 = Self::get_file_crc32(&file.try_clone()?)?;
-        write_flash_files.push(WriteFlashFile {
-            address: segment_start,
-            file,
-            crc32,
-        });
-        Ok(())
+    /// 文件类型检测
+    pub fn detect_file_type(path: &Path) -> Result<FileType, std::io::Error> {
+        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+            match ext.to_lowercase().as_str() {
+                "bin" => return Ok(FileType::Bin),
+                "hex" => return Ok(FileType::Hex),
+                "elf" | "axf" => return Ok(FileType::Elf),
+                _ => {} // 如果扩展名无法识别，继续检查MAGIC
+            }
+        }
+
+        // 如果没有可识别的扩展名，则检查文件MAGIC
+        let mut file = File::open(path)?;
+        let mut magic = [0u8; 4];
+        file.read_exact(&mut magic)?;
+
+        if magic == ELF_MAGIC {
+            return Ok(FileType::Elf);
+        }
+
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Unrecognized file type",
+        ))
     }
 
-    /// Convert Intel HEX file to binary files
-    ///
-    /// This function parses an Intel HEX file and converts it into one or more binary files.
-    /// It handles multiple segments, automatic gap filling with 0xFF, and generates separate
-    /// WriteFlashFile entries for each memory segment.
-    pub fn hex_to_bin(hex_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
+    /// 解析文件信息，支持file@address格式
+    pub fn parse_file_info(file_str: &str) -> Result<Vec<WriteFlashFile>, std::io::Error> {
+        // file@address
+        let parts: Vec<_> = file_str.split('@').collect();
+        // 如果存在@符号，则证明是bin文件
+        if parts.len() == 2 {
+            let addr = Self::str_to_u32(parts[1])
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+            let file = std::fs::File::open(parts[0])?;
+            let crc32 = Self::get_file_crc32(&file)?;
+
+            return Ok(vec![WriteFlashFile {
+                address: addr,
+                file,
+                crc32,
+            }]);
+        }
+
+        let file_type = Self::detect_file_type(Path::new(parts[0]))?;
+
+        match file_type {
+            FileType::Hex => Self::hex_to_write_flash_files(Path::new(parts[0])),
+            FileType::Elf => Self::elf_to_write_flash_files(Path::new(parts[0])),
+            FileType::Bin => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "For binary files, please use the <file@address> format",
+            )),
+        }
+    }
+
+    /// 计算数据的CRC32
+    pub fn calculate_crc32(data: &[u8]) -> u32 {
+        const CRC_32_ALGO: Algorithm<u32> = Algorithm {
+            width: 32,
+            poly: 0x04C11DB7,
+            init: 0,
+            refin: true,
+            refout: true,
+            xorout: 0,
+            check: 0,
+            residue: 0,
+        };
+        crc::Crc::<u32>::new(&CRC_32_ALGO).checksum(data)
+    }
+
+    /// 将HEX文件转换为WriteFlashFile
+    pub fn hex_to_write_flash_files(hex_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
         let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
 
         let file = std::fs::File::open(hex_file)?;
@@ -183,7 +233,8 @@ impl Utils {
         Ok(write_flash_files)
     }
 
-    pub(crate) fn elf_to_bin(elf_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
+    /// 将ELF文件转换为WriteFlashFile  
+    pub fn elf_to_write_flash_files(elf_file: &Path) -> Result<Vec<WriteFlashFile>, std::io::Error> {
         let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
         const SECTOR_SIZE: u32 = 0x1000; // 扇区大小
         const FILL_BYTE: u8 = 0xFF; // 填充字节
@@ -223,7 +274,7 @@ impl Utils {
             // 如果超出了当前对齐块，创建新文件
             if segment_base > current_base + current_offset {
                 current_file.seek(std::io::SeekFrom::Start(0))?;
-                let crc32 = Utils::get_file_crc32(&current_file)?;
+                let crc32 = Self::get_file_crc32(&current_file)?;
                 write_flash_files.push(WriteFlashFile {
                     address: current_base,
                     file: std::mem::replace(&mut current_file, tempfile()?),
@@ -248,10 +299,10 @@ impl Utils {
             current_offset += size as u32;
         }
 
-        // 处理最后一个bin文件
+        // 处理最后一个文件
         if current_offset > 0 {
             current_file.seek(std::io::SeekFrom::Start(0))?;
-            let crc32 = Utils::get_file_crc32(&current_file)?;
+            let crc32 = Self::get_file_crc32(&current_file)?;
             write_flash_files.push(WriteFlashFile {
                 address: current_base,
                 file: current_file,
@@ -260,6 +311,22 @@ impl Utils {
         }
 
         Ok(write_flash_files)
+    }
+
+    /// 完成一个段的处理，将临时文件转换为WriteFlashFile
+    fn finalize_segment(
+        mut temp_file: File,
+        address: u32,
+        write_flash_files: &mut Vec<WriteFlashFile>,
+    ) -> Result<(), std::io::Error> {
+        temp_file.seek(std::io::SeekFrom::Start(0))?;
+        let crc32 = Self::get_file_crc32(&temp_file)?;
+        write_flash_files.push(WriteFlashFile {
+            address,
+            file: temp_file,
+            crc32,
+        });
+        Ok(())
     }
 }
 
@@ -277,7 +344,7 @@ mod tests {
         let mut temp_hex = NamedTempFile::new().unwrap();
         temp_hex.write_all(hex_content.as_bytes()).unwrap();
 
-        let result = Utils::hex_to_bin(temp_hex.path()).unwrap();
+        let result = Utils::hex_to_write_flash_files(temp_hex.path()).unwrap();
 
         // Should have one segment
         assert_eq!(result.len(), 1);
@@ -285,15 +352,22 @@ mod tests {
         let segment = &result[0];
         assert_eq!(segment.address, 0x00000000);
 
-        // Check file size (gap filled from 0x0000 to 0x1003)
-        assert_eq!(segment.file.metadata().unwrap().len(), 0x1004);
+        // Check data size (gap filled from 0x0000 to 0x1003)
+        let file_size = segment.file.metadata().unwrap().len() as usize;
+        assert_eq!(file_size, 0x1004);
+
+        // Read file content to verify data
+        let mut file_data = Vec::new();
+        let mut file = &segment.file;
+        file.read_to_end(&mut file_data).unwrap();
 
         // Verify gap filling
-        let mut file = segment.file.try_clone().unwrap();
-        file.seek(SeekFrom::Start(4)).unwrap(); // Skip first 4 bytes
-        let mut gap_data = vec![0; 0x1000 - 4]; // Gap between 0x04 and 0x1000
-        file.read_exact(&mut gap_data).unwrap();
-        assert!(gap_data.iter().all(|&b| b == 0xFF));
+        // First 4 bytes should be the original data: 01 02 03 04
+        assert_eq!(&file_data[0..4], &[0x01, 0x02, 0x03, 0x04]);
+        // Gap between 0x04 and 0x1000 should be filled with 0xFF
+        assert!(file_data[4..0x1000].iter().all(|&b| b == 0xFF));
+        // Last 4 bytes should be: 05 06 07 08  
+        assert_eq!(&file_data[0x1000..0x1004], &[0x05, 0x06, 0x07, 0x08]);
     }
 
     #[test]
@@ -305,18 +379,30 @@ mod tests {
         let mut temp_hex = NamedTempFile::new().unwrap();
         temp_hex.write_all(hex_content.as_bytes()).unwrap();
 
-        let result = Utils::hex_to_bin(temp_hex.path()).unwrap();
+        let result = Utils::hex_to_write_flash_files(temp_hex.path()).unwrap();
 
         // Should have two segments
         assert_eq!(result.len(), 2);
 
         // First segment at 0x00000000
         assert_eq!(result[0].address, 0x00000000);
-        assert_eq!(result[0].file.metadata().unwrap().len(), 4);
+        let file_size_0 = result[0].file.metadata().unwrap().len() as usize;
+        assert_eq!(file_size_0, 4);
+        
+        let mut file_data_0 = Vec::new();
+        let mut file_0 = &result[0].file;
+        file_0.read_to_end(&mut file_data_0).unwrap();
+        assert_eq!(&file_data_0, &[0x01, 0x02, 0x03, 0x04]);
 
         // Second segment at 0x00010000
         assert_eq!(result[1].address, 0x00010000);
-        assert_eq!(result[1].file.metadata().unwrap().len(), 4);
+        let file_size_1 = result[1].file.metadata().unwrap().len() as usize;
+        assert_eq!(file_size_1, 4);
+        
+        let mut file_data_1 = Vec::new();
+        let mut file_1 = &result[1].file;
+        file_1.read_to_end(&mut file_data_1).unwrap();
+        assert_eq!(&file_data_1, &[0x11, 0x12, 0x13, 0x14]);
     }
 
     #[test]
@@ -327,16 +413,17 @@ mod tests {
         let mut temp_hex = NamedTempFile::new().unwrap();
         temp_hex.write_all(hex_content.as_bytes()).unwrap();
 
-        let result = Utils::hex_to_bin(temp_hex.path()).unwrap();
+        let result = Utils::hex_to_write_flash_files(temp_hex.path()).unwrap();
 
         // Debug: print actual results
         println!("Number of segments: {}", result.len());
         for (i, segment) in result.iter().enumerate() {
+            let file_size = segment.file.metadata().unwrap().len() as usize;
             println!(
                 "Segment {}: address=0x{:08X}, size={}",
                 i,
                 segment.address,
-                segment.file.metadata().unwrap().len()
+                file_size
             );
         }
 
@@ -347,12 +434,25 @@ mod tests {
         assert_eq!(segment.address, 0x00000000);
 
         // Should have 4 bytes data + 4092 bytes gap + 4 bytes data = 4100 bytes
+        let file_size = segment.file.metadata().unwrap().len() as usize;
         println!(
             "Expected size: 0x1004 ({}), Actual size: {}",
             0x1004,
-            segment.file.metadata().unwrap().len()
+            file_size
         );
-        assert_eq!(segment.file.metadata().unwrap().len(), 0x1004);
+        assert_eq!(file_size, 0x1004);
+
+        // Read file content to verify data
+        let mut file_data = Vec::new();
+        let mut file = &segment.file;
+        file.read_to_end(&mut file_data).unwrap();
+
+        // Verify first 4 bytes
+        assert_eq!(&file_data[0..4], &[0xAA, 0xBB, 0xCC, 0xDD]);
+        // Verify gap is filled with 0xFF
+        assert!(file_data[4..0x1000].iter().all(|&b| b == 0xFF));
+        // Verify last 4 bytes
+        assert_eq!(&file_data[0x1000..0x1004], &[0xEE, 0xFF, 0x00, 0x11]);
 
         // Read the file and check gap is filled with 0xFF
         let mut file = segment.file.try_clone().unwrap();
@@ -372,29 +472,38 @@ mod tests {
         let mut temp_hex = NamedTempFile::new().unwrap();
         temp_hex.write_all(hex_content.as_bytes()).unwrap();
 
-        let result = Utils::hex_to_bin(temp_hex.path()).unwrap();
+        let result = Utils::hex_to_write_flash_files(temp_hex.path()).unwrap();
 
         // Should have three segments
         assert_eq!(result.len(), 3);
 
         // First segment at 0x00000000 (contains data at 0x0000 and 0x1000 with gap)
         assert_eq!(result[0].address, 0x00000000);
-        assert_eq!(result[0].file.metadata().unwrap().len(), 0x1008); // 0x1000 + 8 bytes
+        let file_size_0 = result[0].file.metadata().unwrap().len() as usize;
+        assert_eq!(file_size_0, 0x1008); // 0x1000 + 8 bytes
 
         // Second segment at 0x00010000 (contains data at 0x0000 and 0x1000 with gap)
         assert_eq!(result[1].address, 0x00010000);
-        assert_eq!(result[1].file.metadata().unwrap().len(), 0x1004); // 0x1000 + 4 bytes
+        let file_size_1 = result[1].file.metadata().unwrap().len() as usize;
+        assert_eq!(file_size_1, 0x1004); // 0x1000 + 4 bytes
 
         // Third segment at 0x00100000
         assert_eq!(result[2].address, 0x00100000);
-        assert_eq!(result[2].file.metadata().unwrap().len(), 8);
+        let file_size_2 = result[2].file.metadata().unwrap().len() as usize;
+        assert_eq!(file_size_2, 8);
+
+        // Read file content to verify data for first segment
+        let mut file_data_0 = Vec::new();
+        let mut file_0 = &result[0].file;
+        file_0.read_to_end(&mut file_data_0).unwrap();
 
         // Verify gap filling in first segment
-        let mut file = result[0].file.try_clone().unwrap();
-        file.seek(SeekFrom::Start(16)).unwrap(); // Skip first 16 bytes of data
-        let mut gap_data = vec![0; 0x1000 - 16]; // Gap between 0x10 and 0x1000
-        file.read_exact(&mut gap_data).unwrap();
-        assert!(gap_data.iter().all(|&b| b == 0xFF));
+        // First 16 bytes should be the original data: 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10
+        assert_eq!(&file_data_0[0..16], &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10]);
+        // Gap between 0x10 and 0x1000 should be filled with 0xFF
+        assert!(file_data_0[16..0x1000].iter().all(|&b| b == 0xFF));
+        // Last 8 bytes should be the second data block
+        assert_eq!(&file_data_0[0x1000..0x1008], &[0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18]);
     }
 
     #[test]

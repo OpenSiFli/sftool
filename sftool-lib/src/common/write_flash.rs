@@ -1,74 +1,8 @@
 use crate::SifliToolTrait;
 use crate::common::ram_command::{Command, RamCommand, Response};
-use crate::utils::{ELF_MAGIC, FileType, Utils};
+use crate::WriteFlashFile;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::fs::File;
 use std::io::{BufReader, Read, Write};
-use std::path::Path;
-
-/// 通用的Flash写入文件结构
-#[derive(Debug)]
-pub struct WriteFlashFile {
-    pub address: u32,
-    pub file: File,
-    pub crc32: u32,
-}
-
-/// 文件类型检测
-pub fn detect_file_type(path: &Path) -> Result<FileType, std::io::Error> {
-    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-        match ext.to_lowercase().as_str() {
-            "bin" => return Ok(FileType::Bin),
-            "hex" => return Ok(FileType::Hex),
-            "elf" | "axf" => return Ok(FileType::Elf),
-            _ => {} // 如果扩展名无法识别，继续检查MAGIC
-        }
-    }
-
-    // 如果没有可识别的扩展名，则检查文件MAGIC
-    let mut file = File::open(path)?;
-    let mut magic = [0u8; 4];
-    file.read_exact(&mut magic)?;
-
-    if magic == ELF_MAGIC {
-        return Ok(FileType::Elf);
-    }
-
-    Err(std::io::Error::new(
-        std::io::ErrorKind::InvalidInput,
-        "Unrecognized file type",
-    ))
-}
-
-/// 解析文件信息，支持file@address格式
-pub fn parse_file_info(file_str: &str) -> Result<Vec<WriteFlashFile>, std::io::Error> {
-    // file@address
-    let parts: Vec<_> = file_str.split('@').collect();
-    // 如果存在@符号，则证明是bin文件
-    if parts.len() == 2 {
-        let addr = Utils::str_to_u32(parts[1])
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-        let file = File::open(parts[0])?;
-        let crc32 = Utils::get_file_crc32(&file.try_clone()?)?;
-
-        return Ok(vec![WriteFlashFile {
-            address: addr,
-            file,
-            crc32,
-        }]);
-    }
-
-    let file_type = detect_file_type(Path::new(parts[0]))?;
-
-    match file_type {
-        FileType::Hex => Utils::hex_to_bin(Path::new(parts[0])),
-        FileType::Elf => Utils::elf_to_bin(Path::new(parts[0])),
-        FileType::Bin => Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "For binary files, please use the <file@address> format",
-        )),
-    }
-}
 
 /// 通用的Flash写入操作实现
 pub struct FlashWriter;
