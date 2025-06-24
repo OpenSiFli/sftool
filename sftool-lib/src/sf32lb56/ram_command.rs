@@ -1,5 +1,5 @@
 use crate::common::ram_command::{CommandConfig, RamOps};
-use crate::sf32lb56::sifli_debug::{SifliDebug, SifliUartCommand};
+use crate::common::sifli_debug::{SifliDebug, SifliUartCommand};
 use crate::sf32lb56::SF32LB56Tool;
 
 // 重新导出公共类型

@@ -1,530 +1,126 @@
-use crate::SifliTool;
-use probe_rs::architecture::arm::armv8m::Dcrdr;
-use probe_rs::{MemoryMappedRegister, memory_mapped_bitfield_register};
-use std::cmp::{max, min};
-use std::fmt;
-use std::io::{BufReader, BufWriter, Read, Write};
-use std::time::{Duration, Instant};
+use super::SF32LB52Tool;
+use crate::common::sifli_debug::{
+    ChipFrameFormat, RecvError, START_WORD, SifliUartCommand, SifliUartResponse, common_debug,
+};
+use std::io::{BufReader, Read};
 
-const START_WORD: [u8; 2] = [0x7E, 0x79];
-const DEFUALT_RECV_TIMEOUT: Duration = Duration::from_secs(3);
+// Re-export for the module
+pub use crate::common::sifli_debug::SifliDebug;
 
-#[derive(Debug)]
-pub enum SifliUartCommand<'a> {
-    Enter,
-    Exit,
-    MEMRead { addr: u32, len: u16 },
-    MEMWrite { addr: u32, data: &'a [u32] },
-}
+// SF32LB52 specific frame format implementation
+pub struct SF32LB52FrameFormat;
 
-#[derive(Debug)]
-pub enum SifliUartResponse {
-    Enter,
-    Exit,
-    MEMRead { data: Vec<u8> },
-    MEMWrite,
-}
-
-#[derive(Debug)]
-enum RecvError {
-    Timeout,
-    InvalidHeaderLength,
-    InvalidHeaderChannel,
-    ReadError(std::io::Error),
-    InvalidResponse(u8),
-}
-
-impl From<RecvError> for std::io::Error {
-    fn from(err: RecvError) -> Self {
-        match err {
-            RecvError::Timeout => {
-                std::io::Error::new(std::io::ErrorKind::TimedOut, "Receive data timeout")
-            }
-            RecvError::InvalidHeaderLength => {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid frame length")
-            }
-            RecvError::InvalidHeaderChannel => std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid frame channel information",
-            ),
-            RecvError::ReadError(e) => {
-                std::io::Error::new(e.kind(), format!("Data read error: {}", e))
-            }
-            RecvError::InvalidResponse(code) => std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid response code: {:#04X}", code),
-            ),
-        }
+impl ChipFrameFormat for SF32LB52FrameFormat {
+    fn create_header(len: u16) -> Vec<u8> {
+        let mut header = vec![];
+        header.extend_from_slice(&START_WORD);
+        // SF32LB52 uses little-endian for data length
+        header.extend_from_slice(&len.to_le_bytes());
+        header.push(0x10);
+        header.push(0x00);
+        header
     }
-}
 
-impl fmt::Display for SifliUartCommand<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SifliUartCommand::Enter => write!(f, "Enter"),
-            SifliUartCommand::Exit => write!(f, "Exit"),
+    fn parse_frame_header(
+        reader: &mut BufReader<Box<dyn Read + Send>>,
+    ) -> Result<usize, RecvError> {
+        // 读取长度 (2字节) - SF32LB52 uses little-endian
+        let mut length_bytes = [0; 2];
+        if let Err(e) = reader.read_exact(&mut length_bytes) {
+            tracing::error!("Failed to read length bytes: {}", e);
+            return Err(RecvError::InvalidHeaderLength);
+        }
+
+        let payload_size = u16::from_le_bytes(length_bytes) as usize;
+
+        // 读取通道和CRC (2字节)
+        let mut channel_crc = [0; 2];
+        if let Err(e) = reader.read_exact(&mut channel_crc) {
+            tracing::error!("Failed to read channel and CRC bytes: {}", e);
+            return Err(RecvError::InvalidHeaderChannel);
+        }
+
+        Ok(payload_size)
+    }
+
+    fn encode_command_data(command: &SifliUartCommand) -> Vec<u8> {
+        let mut send_data = vec![];
+        match command {
+            SifliUartCommand::Enter => {
+                let temp = [0x41, 0x54, 0x53, 0x46, 0x33, 0x32, 0x05, 0x21];
+                send_data.extend_from_slice(&temp);
+            }
+            SifliUartCommand::Exit => {
+                let temp = [0x41, 0x54, 0x53, 0x46, 0x33, 0x32, 0x18, 0x21];
+                send_data.extend_from_slice(&temp);
+            }
             SifliUartCommand::MEMRead { addr, len } => {
-                write!(f, "MEMRead {{ addr: {:#X}, len: {:#X} }}", addr, len)
+                send_data.push(0x40);
+                send_data.push(0x72);
+                // SF32LB52 uses little-endian for address and length
+                send_data.extend_from_slice(&addr.to_le_bytes());
+                send_data.extend_from_slice(&len.to_le_bytes());
             }
             SifliUartCommand::MEMWrite { addr, data } => {
-                write!(f, "MEMWrite {{ addr: {:#X}, data: [", addr)?;
-                for (i, d) in data.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{:#X}", d)?;
-                }
-                write!(f, "] }}")
-            }
-        }
-    }
-}
-
-impl fmt::Display for SifliUartResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SifliUartResponse::Enter => write!(f, "Enter"),
-            SifliUartResponse::Exit => write!(f, "Exit"),
-            SifliUartResponse::MEMRead { data } => {
-                write!(f, "MEMRead {{ data: [")?;
-                for (i, byte) in data.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{:#04X}", byte)?;
-                }
-                write!(f, "] }}")
-            }
-            SifliUartResponse::MEMWrite => write!(f, "MEMWrite"),
-        }
-    }
-}
-
-memory_mapped_bitfield_register! {
-    pub struct Dcrsr(u32);
-    0xE000_EDF4, "DCRSR",
-    impl From;
-    pub _, set_regwnr: 16;
-    // If the processor does not implement the FP extension the REGSEL field is bits `[4:0]`, and bits `[6:5]` are Reserved, SBZ.
-    pub _, set_regsel: 6,0;
-}
-
-memory_mapped_bitfield_register! {
-    pub struct Dhcsr(u32);
-    0xE000_EDF0, "DHCSR",
-    impl From;
-    pub s_reset_st, _: 25;
-    pub s_retire_st, _: 24;
-    pub s_lockup, _: 19;
-    pub s_sleep, _: 18;
-    pub s_halt, _: 17;
-    pub s_regrdy, _: 16;
-    pub c_maskints, set_c_maskints: 3;
-    pub c_step, set_c_step: 2;
-    pub c_halt, set_c_halt: 1;
-    pub c_debugen, set_c_debugen: 0;
-}
-
-impl Dhcsr {
-    /// This function sets the bit to enable writes to this register.
-    ///
-    /// C1.6.3 Debug Halting Control and Status Register, DHCSR:
-    /// Debug key:
-    /// Software must write 0xA05F to this field to enable write accesses to bits
-    /// `[15:0]`, otherwise the processor ignores the write access.
-    pub fn enable_write(&mut self) {
-        self.0 &= !(0xffff << 16);
-        self.0 |= 0xa05f << 16;
-    }
-}
-
-pub trait SifliDebug {
-    fn debug_command(
-        &mut self,
-        command: SifliUartCommand,
-    ) -> Result<SifliUartResponse, std::io::Error>;
-    fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<(), std::io::Error>;
-    fn debug_read_word32(&mut self, addr: u32) -> Result<u32, std::io::Error>;
-    fn debug_write_core_reg(&mut self, reg: u16, data: u32) -> Result<(), std::io::Error>;
-    fn debug_write_memory(&mut self, addr: u32, data: &[u8]) -> Result<(), std::io::Error>;
-    fn debug_run(&mut self) -> Result<(), std::io::Error>;
-    fn debug_halt(&mut self) -> Result<(), std::io::Error>;
-    fn debug_step(&mut self) -> Result<(), std::io::Error>;
-}
-
-// Helper functions for SifliDebug implementation
-fn create_header(len: u16) -> Vec<u8> {
-    let mut header = vec![];
-    header.extend_from_slice(&START_WORD);
-    header.extend_from_slice(&len.to_le_bytes());
-    header.push(0x10);
-    header.push(0x00);
-    header
-}
-
-fn send(
-    writer: &mut BufWriter<Box<dyn Write + Send>>,
-    command: &SifliUartCommand,
-) -> Result<(), std::io::Error> {
-    let mut send_data = vec![];
-    match command {
-        SifliUartCommand::Enter => {
-            let temp = [0x41, 0x54, 0x53, 0x46, 0x33, 0x32, 0x05, 0x21];
-            send_data.extend_from_slice(&temp);
-        }
-        SifliUartCommand::Exit => {
-            let temp = [0x41, 0x54, 0x53, 0x46, 0x33, 0x32, 0x18, 0x21];
-            send_data.extend_from_slice(&temp);
-        }
-        SifliUartCommand::MEMRead { addr, len } => {
-            send_data.push(0x40);
-            send_data.push(0x72);
-            send_data.extend_from_slice(&addr.to_le_bytes());
-            send_data.extend_from_slice(&len.to_le_bytes());
-        }
-        SifliUartCommand::MEMWrite { addr, data } => {
-            send_data.push(0x40);
-            send_data.push(0x77);
-            send_data.extend_from_slice(&addr.to_le_bytes());
-            send_data.extend_from_slice(&(data.len() as u16).to_le_bytes());
-            for d in data.iter() {
-                send_data.extend_from_slice(&d.to_le_bytes());
-            }
-        }
-    }
-
-    let header = create_header(send_data.len() as u16);
-    writer.write_all(&header)?;
-    writer.write_all(&send_data)?;
-    writer.flush()?;
-
-    Ok(())
-}
-
-fn recv(reader: &mut BufReader<Box<dyn Read + Send>>) -> Result<SifliUartResponse, std::io::Error> {
-    // 开始处理接收数据
-    let start_time = Instant::now();
-
-    let mut temp: Vec<u8> = vec![];
-
-    // 步骤1: 找到帧起始标记 (START_WORD)
-    tracing::debug!("Waiting for frame start marker...");
-    let mut buffer = vec![];
-
-    loop {
-        if start_time.elapsed() >= DEFUALT_RECV_TIMEOUT {
-            tracing::warn!(
-                "Receive timeout: {} seconds",
-                DEFUALT_RECV_TIMEOUT.as_secs()
-            );
-            return Err(RecvError::Timeout.into());
-        }
-
-        let mut byte = [0; 1];
-        match reader.read_exact(&mut byte) {
-            Ok(_) => {
-                // 处理帧检测逻辑
-                if byte[0] == START_WORD[0] || (buffer.len() == 1 && byte[0] == START_WORD[1]) {
-                    buffer.push(byte[0]);
-
-                    // 检查是否找到完整的START_WORD
-                    if buffer.ends_with(&START_WORD) {
-                        tracing::debug!("Frame start marker found: {:02X?}", START_WORD);
-                        break;
-                    }
-                } else {
-                    // 重置缓冲区
-                    buffer.clear();
-                }
-
-                // 缓冲区超过2个字节但没有匹配START_WORD，清除旧数据
-                if buffer.len() > 2 {
-                    buffer.clear();
+                send_data.push(0x40);
+                send_data.push(0x77);
+                // SF32LB52 uses little-endian for address and data length
+                send_data.extend_from_slice(&addr.to_le_bytes());
+                send_data.extend_from_slice(&(data.len() as u16).to_le_bytes());
+                for d in data.iter() {
+                    send_data.extend_from_slice(&d.to_le_bytes());
                 }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // 对于非阻塞IO，继续尝试
-                continue;
-            }
-            Err(e) => {
-                tracing::error!("Error reading frame start marker: {}", e);
-                continue; // 继续尝试读取下一个字节
-            }
         }
+        send_data
     }
 
-    temp.extend_from_slice(&buffer);
-
-    // 步骤2: 读取帧头部(长度，通道，CRC)
-    tracing::debug!("Reading frame header...");
-
-    // 读取长度 (2字节)
-    let mut length_bytes = [0; 2];
-    if let Err(e) = reader.read_exact(&mut length_bytes) {
-        tracing::error!("Failed to read length bytes: {}", e);
-        return Err(RecvError::InvalidHeaderLength.into());
+    fn decode_response_data(data: &[u8]) -> u32 {
+        // SF32LB52 uses little-endian
+        u32::from_le_bytes([data[0], data[1], data[2], data[3]])
     }
 
-    temp.extend_from_slice(&length_bytes);
-
-    let payload_size = u16::from_le_bytes(length_bytes) as usize;
-    tracing::debug!("Received packet length: {} bytes", payload_size);
-
-    // 读取通道和CRC (2字节)
-    let mut channel_crc = [0; 2];
-    if let Err(e) = reader.read_exact(&mut channel_crc) {
-        tracing::error!("Failed to read channel and CRC bytes: {}", e);
-        return Err(RecvError::InvalidHeaderChannel.into());
-    }
-
-    temp.extend_from_slice(&channel_crc);
-
-    // 步骤3: 读取有效载荷数据
-    tracing::debug!("Reading payload data ({} bytes)...", payload_size);
-    let mut recv_data = vec![];
-
-    while recv_data.len() < payload_size {
-        let mut byte = [0; 1];
-        match reader.read_exact(&mut byte) {
-            Ok(_) => {
-                recv_data.push(byte[0]);
-            }
-            Err(e) => {
-                tracing::error!("Failed to read payload data: {}", e);
-                return Err(RecvError::ReadError(e).into());
-            }
-        }
-    }
-
-    temp.extend_from_slice(&recv_data);
-
-    // 步骤4: 解析响应数据
-    if recv_data.is_empty() {
-        tracing::error!("Received empty payload data");
-        return Err(RecvError::InvalidResponse(0).into());
-    }
-
-    let response_code = recv_data[0];
-    match response_code {
-        0xD1 => {
-            tracing::info!("Received Enter command response");
-            Ok(SifliUartResponse::Enter)
-        }
-        0xD0 => {
-            tracing::info!("Received Exit command response");
-            Ok(SifliUartResponse::Exit)
-        }
-        0xD2 => {
-            // 提取数据部分，跳过响应代码和最后的校验字节
-            let data = if recv_data.len() > 1 {
-                recv_data[1..recv_data.len() - 1].to_vec()
-            } else {
-                Vec::new()
-            };
-            tracing::info!(
-                "Received memory read response, data length: {} bytes",
-                data.len()
-            );
-            Ok(SifliUartResponse::MEMRead { data })
-        }
-        0xD3 => {
-            tracing::info!("Received memory write response");
-            Ok(SifliUartResponse::MEMWrite)
-        }
-        _ => {
-            tracing::error!("Received unknown response code: {:#04X}", response_code);
-            Err(RecvError::InvalidResponse(response_code).into())
-        }
+    // SF32LB52 uses no address mapping
+    fn map_address(addr: u32) -> u32 {
+        addr
     }
 }
 
-impl<T: SifliTool> SifliDebug for T {
+impl crate::common::sifli_debug::SifliDebug for SF32LB52Tool {
     fn debug_command(
         &mut self,
         command: SifliUartCommand,
     ) -> Result<SifliUartResponse, std::io::Error> {
-        tracing::info!("Command: {}", command);
-        let writer: Box<dyn Write + Send> = self.port().try_clone()?;
-        let mut buf_writer = BufWriter::new(writer);
-
-        let reader: Box<dyn Read + Send> = self.port().try_clone()?;
-        let mut buf_reader = BufReader::new(reader);
-
-        let ret = send(&mut buf_writer, &command);
-        if let Err(e) = ret {
-            tracing::error!("Command send error: {:?}", e);
-            return Err(e);
-        }
-
-        match command {
-            SifliUartCommand::Exit => Ok(SifliUartResponse::Exit),
-            _ => recv(&mut buf_reader),
-        }
+        common_debug::debug_command_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self, command)
     }
 
     fn debug_read_word32(&mut self, addr: u32) -> Result<u32, std::io::Error> {
-        let command = SifliUartCommand::MEMRead { addr, len: 1 };
-        match self.debug_command(command) {
-            Ok(SifliUartResponse::MEMRead { data }) => {
-                if data.len() != 4 {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Invalid response length",
-                    ));
-                }
-                let value = u32::from_le_bytes(data.try_into().unwrap());
-                Ok(value)
-            }
-            Ok(_) => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid response",
-            )),
-            Err(e) => Err(e),
-        }
+        common_debug::debug_read_word32_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self, addr)
     }
 
     fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<(), std::io::Error> {
-        let command = SifliUartCommand::MEMWrite {
-            addr,
-            data: &[data],
-        };
-        match self.debug_command(command) {
-            Ok(SifliUartResponse::MEMWrite) => Ok(()),
-            Ok(_) => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid response",
-            )),
-            Err(e) => Err(e),
-        }
+        common_debug::debug_write_word32_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self, addr, data)
     }
 
-    fn debug_write_memory(&mut self, address: u32, data: &[u8]) -> Result<(), std::io::Error> {
-        if data.is_empty() {
-            return Ok(());
-        }
-
-        let address = if (address & 0xff000000) == 0x12000000 {
-            (address & 0x00ffffff) | 0x62000000
-        } else {
-            address
-        };
-
-        let addr_usize = address as usize;
-        // Calculate the start address and end address after alignment
-        let start_aligned = addr_usize - (addr_usize % 4);
-        let end_aligned = (addr_usize + data.len()).div_ceil(4) * 4;
-        let total_bytes = end_aligned - start_aligned;
-        let total_words = total_bytes / 4;
-
-        let mut buffer = vec![0u8; total_bytes];
-
-        for i in 0..total_words {
-            let block_addr = start_aligned + i * 4;
-            let block_end = block_addr + 4;
-
-            // Determine if the current 4-byte block is ‘completely overwritten’ by the new data written to it
-            // If the block is completely in the new data area, then copy the new data directly
-            if block_addr >= addr_usize && block_end <= addr_usize + data.len() {
-                let offset_in_data = block_addr - addr_usize;
-                buffer[i * 4..i * 4 + 4].copy_from_slice(&data[offset_in_data..offset_in_data + 4]);
-            } else {
-                // For the rest of the cases (header or tail incomplete overwrite):
-                // Call MEMRead first to read out the original 4-byte block.
-                let resp = self.debug_command(SifliUartCommand::MEMRead {
-                    addr: block_addr as u32,
-                    len: 1,
-                })?;
-                let mut block: [u8; 4] = match resp {
-                    SifliUartResponse::MEMRead { data: d } if d.len() == 4 => {
-                        [d[0], d[1], d[2], d[3]]
-                    }
-                    _ => {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            "Invalid response length",
-                        ));
-                    }
-                };
-                // Calculate the overlap of the block with the new data area
-                let overlap_start = max(block_addr, addr_usize);
-                let overlap_end = min(block_end, addr_usize + data.len());
-                if overlap_start < overlap_end {
-                    let in_block_offset = overlap_start - block_addr;
-                    let in_data_offset = overlap_start - addr_usize;
-                    let overlap_len = overlap_end - overlap_start;
-                    block[in_block_offset..in_block_offset + overlap_len]
-                        .copy_from_slice(&data[in_data_offset..in_data_offset + overlap_len]);
-                }
-                buffer[i * 4..i * 4 + 4].copy_from_slice(&block);
-            }
-        }
-
-        let words: Vec<u32> = buffer
-            .chunks_exact(4)
-            .map(|chunk| u32::from_le_bytes(chunk.try_into().expect("chunk length is 4")))
-            .collect();
-
-        // Write the entire alignment area at once
-        self.debug_command(SifliUartCommand::MEMWrite {
-            addr: start_aligned as u32,
-            data: &words,
-        })?;
-
-        Ok(())
+    fn debug_write_memory(&mut self, addr: u32, data: &[u8]) -> Result<(), std::io::Error> {
+        common_debug::debug_write_memory_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self, addr, data)
     }
 
-    fn debug_write_core_reg(&mut self, addr: u16, value: u32) -> Result<(), std::io::Error> {
-        self.debug_write_word32(Dcrdr::get_mmio_address() as u32, value)?;
-
-        let mut dcrsr_val = Dcrsr(0);
-        dcrsr_val.set_regwnr(true); // Perform a write.
-        dcrsr_val.set_regsel(addr.into()); // The address of the register to write.
-
-        self.debug_write_word32(Dcrsr::get_mmio_address() as u32, dcrsr_val.into())?;
-
-        // self.wait_for_core_register_transfer(Duration::from_millis(100))?;
-        std::thread::sleep(Duration::from_millis(10));
-        Ok(())
+    fn debug_write_core_reg(&mut self, reg: u16, data: u32) -> Result<(), std::io::Error> {
+        common_debug::debug_write_core_reg_impl::<SF32LB52Tool, SF32LB52FrameFormat>(
+            self, reg, data,
+        )
     }
 
     fn debug_step(&mut self) -> Result<(), std::io::Error> {
-        // 这里我们忽略了很多必要的检查，请参考probe-rs源码
-        let mut value = Dhcsr(0);
-        // Leave halted state.
-        // Step one instruction.
-        value.set_c_step(true);
-        value.set_c_halt(false);
-        value.set_c_debugen(true);
-        value.set_c_maskints(true);
-        value.enable_write();
-
-        self.debug_write_word32(Dhcsr::get_mmio_address() as u32, value.into())?;
-
-        std::thread::sleep(Duration::from_millis(10));
-        Ok(())
+        common_debug::debug_step_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self)
     }
 
     fn debug_run(&mut self) -> Result<(), std::io::Error> {
-        self.debug_step()?;
-        let mut value = Dhcsr(0);
-        value.set_c_halt(false);
-        value.set_c_debugen(true);
-        value.enable_write();
-
-        self.debug_write_word32(Dhcsr::get_mmio_address() as u32, value.into())?;
-
-        std::thread::sleep(Duration::from_millis(10));
-        Ok(())
+        common_debug::debug_run_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self)
     }
 
     fn debug_halt(&mut self) -> Result<(), std::io::Error> {
-        let mut value = Dhcsr(0);
-        value.set_c_halt(true);
-        value.set_c_debugen(true);
-        value.enable_write();
-
-        self.debug_write_word32(Dhcsr::get_mmio_address() as u32, value.into())?;
-        std::thread::sleep(Duration::from_millis(10));
-        Ok(())
+        common_debug::debug_halt_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self)
     }
 }

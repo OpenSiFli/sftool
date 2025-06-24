@@ -8,7 +8,7 @@ pub mod sifli_debug;
 pub mod speed;
 pub mod write_flash;
 
-use self::sifli_debug::SifliDebug;
+use crate::common::sifli_debug::SifliDebug;
 use crate::sf32lb52::ram_command::DownloadStub;
 use crate::{SifliTool, SifliToolBase, SifliToolTrait};
 use serialport::SerialPort;
@@ -137,8 +137,8 @@ impl SF32LB52Tool {
     }
 
     fn attempt_connect(&mut self) -> Result<(), std::io::Error> {
-        use self::sifli_debug::{SifliUartCommand, SifliUartResponse};
         use crate::Operation;
+        use crate::common::sifli_debug::{SifliUartCommand, SifliUartResponse};
 
         let infinite_attempts = self.base.connect_attempts <= 0;
         let mut remaining_attempts = if infinite_attempts {
@@ -203,7 +203,7 @@ impl SF32LB52Tool {
     }
 
     fn download_stub_impl(&mut self) -> Result<(), std::io::Error> {
-        use self::sifli_debug::SifliUartCommand;
+        use crate::common::sifli_debug::SifliUartCommand;
         use crate::ram_stub::{self, CHIP_FILE_NAME};
         use indicatif::{ProgressBar, ProgressStyle};
         use probe_rs::MemoryMappedRegister;
