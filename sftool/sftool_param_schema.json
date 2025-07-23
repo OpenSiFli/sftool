@@ -1,0 +1,174 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "sftool CLI Configuration Schema",
+  "description": "JSON schema for configuring the sftool command-line interface",
+  "type": "object",
+  "properties": {
+    "chip": {
+      "type": "string",
+      "enum": [ "SF32LB52", "SF32LB56", "SF32LB58" ],
+      "description": "Target chip type (required)"
+    },
+    "memory": {
+      "type": "string",
+      "enum": [ "nor", "nand", "sd" ],
+      "default": "nor",
+      "description": "Memory type"
+    },
+    "port": {
+      "type": "string",
+      "description": "Serial port device (required)"
+    },
+    "baud": {
+      "type": "integer",
+      "default": 1000000,
+      "description": "Serial port baud rate"
+    },
+    "before": {
+      "type": "string",
+      "enum": [ "no_reset", "soft_reset", "default_reset" ],
+      "default": "default_reset",
+      "description": "Action before connecting to the chip"
+    },
+    "after": {
+      "type": "string",
+      "enum": [ "no_reset", "soft_reset", "default_reset" ],
+      "default": "soft_reset",
+      "description": "Action after sftool finishes"
+    },
+    "connect_attempts": {
+      "type": "integer",
+      "default": 3,
+      "description": "Number of attempts to connect (≤0 = infinite)"
+    },
+    "compat": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable compatibility mode"
+    },
+    "write_flash": {
+      "$ref": "#/definitions/writeFlashCommand"
+    },
+    "read_flash": {
+      "$ref": "#/definitions/readFlashCommand"
+    },
+    "erase_flash": {
+      "$ref": "#/definitions/eraseFlashCommand"
+    },
+    "erase_region": {
+      "$ref": "#/definitions/eraseRegionCommand"
+    }
+  },
+  "required": [ "chip", "port" ],
+  "oneOf": [
+    { "required": [ "write_flash" ] },
+    { "required": [ "read_flash" ] },
+    { "required": [ "erase_flash" ] },
+    { "required": [ "erase_region" ] }
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "hexString": {
+      "type": "string",
+      "pattern": "^0x[0-9A-Fa-f]+$",
+      "description": "Hexadecimal string, e.g. 0x12000000"
+    },
+    "writeFlashFile": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the binary file"
+        },
+        "address": {
+          "$ref": "#/definitions/hexString"
+        }
+      },
+      "required": [ "path", "address" ],
+      "additionalProperties": false
+    },
+    "readFlashFile": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the output file"
+        },
+        "address": {
+          "$ref": "#/definitions/hexString"
+        },
+        "size": {
+          "$ref": "#/definitions/hexString",
+          "description": "Number of bytes to read from flash"
+        }
+      },
+      "required": [ "path", "address", "size" ],
+      "additionalProperties": false
+    },
+    "regionItem": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "$ref": "#/definitions/hexString"
+        },
+        "size": {
+          "$ref": "#/definitions/hexString"
+        }
+      },
+      "required": [ "address", "size" ],
+      "additionalProperties": false
+    },
+    "writeFlashCommand": {
+      "type": "object",
+      "description": "Parameters for the write_flash command",
+      "properties": {
+        "verify": {
+          "type": "boolean",
+          "default": false,
+          "description": "Verify just-written data"
+        },
+        "erase_all": {
+          "type": "boolean",
+          "default": false,
+          "description": "Erase entire flash before writing"
+        },
+        "no-compress": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable data compression"
+        },
+        "file": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/writeFlashFile"
+          },
+          "description": "List of files and target addresses"
+        }
+      },
+      "required": [ "file" ],
+      "additionalProperties": false
+    },
+    "readFlashCommand": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/readFlashFile"
+      },
+      "description": "Arguments for read_flash: list of <filename@address:size>"
+    },
+    "eraseFlashCommand": {
+      "type": "string",
+      "pattern": "^0x[0-9A-Fa-f]+$",
+      "description": "Address for erase_flash"
+    },
+    "eraseRegionCommand": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/regionItem"
+      },
+      "description": "List of regions (<address:size>) to erase"
+    }
+  }
+}
