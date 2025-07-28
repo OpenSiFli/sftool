@@ -1880,6 +1880,8 @@ name = "sftool"
 version = "0.1.9"
 dependencies = [
  "clap",
+ "serde",
+ "serde_json",
  "serialport",
  "sftool-lib",
  "strum 0.27.1",
