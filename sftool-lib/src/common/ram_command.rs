@@ -90,7 +90,9 @@ impl RamOps {
         // 发送命令
         port.write_all(cmd.to_string().as_bytes())?;
         port.flush()?;
-        port.clear(serialport::ClearBuffer::All)?;
+        // 在macOS上，FTDI的驱动似乎不高兴我们清除输入缓冲区，这可能会导致后续要发送的内容被截断
+        // 因此这个地方我们不再需要清理缓冲区，应该在后续的操作中滤除掉额外的信息
+        // port.clear(serialport::ClearBuffer::All)?;
 
         // 确定超时时间
         let timeout = match cmd {
