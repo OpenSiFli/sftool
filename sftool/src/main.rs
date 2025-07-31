@@ -27,7 +27,10 @@ fn config_region_to_string(region: &config::RegionItemConfig) -> String {
 }
 
 /// Execute command from config file
-fn execute_config_command(config: &SfToolConfig, siflitool: &mut Box<dyn sftool_lib::SifliTool>) -> Result<(), std::io::Error> {
+fn execute_config_command(
+    config: &SfToolConfig,
+    siflitool: &mut Box<dyn sftool_lib::SifliTool>,
+) -> Result<(), std::io::Error> {
     if let Some(ref write_flash) = config.write_flash {
         // Convert config files to CLI format
         let mut files = Vec::new();
@@ -64,7 +67,9 @@ fn execute_config_command(config: &SfToolConfig, siflitool: &mut Box<dyn sftool_
         siflitool.write_flash(&write_params)
     } else if let Some(ref read_flash) = config.read_flash {
         // Convert config files to CLI format
-        let files: Vec<String> = read_flash.files.iter()
+        let files: Vec<String> = read_flash
+            .files
+            .iter()
             .map(config_read_file_to_string)
             .collect();
 
@@ -82,14 +87,19 @@ fn execute_config_command(config: &SfToolConfig, siflitool: &mut Box<dyn sftool_
             }
         }
 
-        let read_params = sftool_lib::ReadFlashParams { files: parsed_files };
+        let read_params = sftool_lib::ReadFlashParams {
+            files: parsed_files,
+        };
         siflitool.read_flash(&read_params)
     } else if let Some(ref erase_flash) = config.erase_flash {
         // Parse erase address using existing logic
         let address = match sftool_lib::utils::Utils::parse_erase_address(&erase_flash.address.0) {
             Ok(addr) => addr,
             Err(e) => {
-                eprintln!("Failed to parse erase address {}: {}", erase_flash.address.0, e);
+                eprintln!(
+                    "Failed to parse erase address {}: {}",
+                    erase_flash.address.0, e
+                );
                 std::process::exit(1);
             }
         };
@@ -98,7 +108,9 @@ fn execute_config_command(config: &SfToolConfig, siflitool: &mut Box<dyn sftool_
         siflitool.erase_flash(&erase_params)
     } else if let Some(ref erase_region) = config.erase_region {
         // Convert config regions to CLI format
-        let regions: Vec<String> = erase_region.regions.iter()
+        let regions: Vec<String> = erase_region
+            .regions
+            .iter()
             .map(config_region_to_string)
             .collect();
 
@@ -116,7 +128,9 @@ fn execute_config_command(config: &SfToolConfig, siflitool: &mut Box<dyn sftool_
             }
         }
 
-        let erase_region_params = sftool_lib::EraseRegionParams { regions: parsed_regions };
+        let erase_region_params = sftool_lib::EraseRegionParams {
+            regions: parsed_regions,
+        };
         siflitool.erase_region(&erase_region_params)
     } else {
         Err(std::io::Error::new(
@@ -252,33 +266,61 @@ fn memory_to_string(memory: &Memory) -> String {
 }
 
 /// Merge CLI arguments with configuration file, CLI args take precedence
-fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<(ChipType, String, String, u32, Operation, Operation, i8, bool), String> {
+fn merge_config(
+    args: &Cli,
+    config: Option<SfToolConfig>,
+) -> Result<
+    (
+        ChipType,
+        String,
+        String,
+        u32,
+        Operation,
+        Operation,
+        i8,
+        bool,
+    ),
+    String,
+> {
     // 使用配置文件或默认配置
     let base_config = config.unwrap_or_else(|| SfToolConfig::with_defaults());
 
     let chip = match &args.chip {
         Some(c) => c.clone(),
-        None => base_config.parse_chip_type().map_err(|e| format!("Invalid chip type in config: {}", e))?,
+        None => base_config
+            .parse_chip_type()
+            .map_err(|e| format!("Invalid chip type in config: {}", e))?,
     };
-    
-    let memory = args.memory.as_ref()
+
+    let memory = args
+        .memory
+        .as_ref()
         .map(memory_to_string)
         .unwrap_or_else(|| base_config.memory.clone());
-    
-    let port = args.port.clone().unwrap_or_else(|| base_config.port.clone());
+
+    let port = args
+        .port
+        .clone()
+        .unwrap_or_else(|| base_config.port.clone());
     let baud = args.baud.unwrap_or(base_config.baud);
-    
+
     let before = match &args.before {
         Some(b) => b.clone(),
-        None => base_config.parse_before().map_err(|e| format!("Invalid before operation in config: {}", e))?,
+        None => base_config
+            .parse_before()
+            .map_err(|e| format!("Invalid before operation in config: {}", e))?,
     };
-    
+
     let after = match &args.after {
         Some(a) => a.clone(),
-        None => base_config.parse_after().map_err(|e| format!("Invalid after operation in config: {}", e))?,
+        None => base_config
+            .parse_after()
+            .map_err(|e| format!("Invalid after operation in config: {}", e))?,
     };
-    
-    let connect_attempts = args.connect_attempts.unwrap_or(base_config.connect_attempts);
+
+    let connect_attempts = args
+        .connect_attempts
+        .unwrap_or(base_config.connect_attempts);
     let compat = args.compat.unwrap_or(base_config.compat);
 
     // 验证必需字段
@@ -286,7 +328,16 @@ fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<(ChipType, S
         return Err("Port must be specified either via --port or in config file".to_string());
     }
 
-    Ok((chip, memory, port, baud, before, after, connect_attempts, compat))
+    Ok((
+        chip,
+        memory,
+        port,
+        baud,
+        before,
+        after,
+        connect_attempts,
+        compat,
+    ))
 }
 
 /// Determine which command to execute from CLI args or config file
@@ -300,7 +351,10 @@ fn get_command_source(args: &Cli, config: Option<SfToolConfig>) -> Result<Comman
     match (&args.command, &config) {
         (Some(cmd), _) => Ok(CommandSource::Cli(cmd.clone())),
         (None, Some(cfg)) => Ok(CommandSource::Config(cfg.clone())),
-        (None, None) => Err("No command specified. Use a subcommand or provide a config file with a command.".to_string()),
+        (None, None) => Err(
+            "No command specified. Use a subcommand or provide a config file with a command."
+                .to_string(),
+        ),
     }
 }
 
@@ -402,7 +456,7 @@ fn main() {
     };
 
     // Merge CLI args with config file, CLI args take precedence
-    let (chip_type, memory_type, port, baud, before, after, connect_attempts, compat) = 
+    let (chip_type, memory_type, port, baud, before, after, connect_attempts, compat) =
         match merge_config(&args, config.clone()) {
             Ok(merged) => merged,
             Err(e) => {
@@ -492,13 +546,17 @@ fn main() {
                 }
                 Commands::EraseFlash(params) => {
                     // 在CLI中解析擦除地址
-                    let address = match sftool_lib::utils::Utils::parse_erase_address(&params.address) {
-                        Ok(addr) => addr,
-                        Err(e) => {
-                            eprintln!("Failed to parse erase address {}: {}", params.address, e);
-                            std::process::exit(1);
-                        }
-                    };
+                    let address =
+                        match sftool_lib::utils::Utils::parse_erase_address(&params.address) {
+                            Ok(addr) => addr,
+                            Err(e) => {
+                                eprintln!(
+                                    "Failed to parse erase address {}: {}",
+                                    params.address, e
+                                );
+                                std::process::exit(1);
+                            }
+                        };
 
                     let erase_params = sftool_lib::EraseFlashParams { address };
                     siflitool.erase_flash(&erase_params)
@@ -523,9 +581,7 @@ fn main() {
                 }
             }
         }
-        CommandSource::Config(config) => {
-            execute_config_command(&config, &mut siflitool)
-        }
+        CommandSource::Config(config) => execute_config_command(&config, &mut siflitool),
     };
 
     if let Err(e) = res {
