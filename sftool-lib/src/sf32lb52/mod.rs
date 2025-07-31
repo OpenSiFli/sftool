@@ -85,10 +85,9 @@ impl SF32LB52Tool {
         let progress_bar = ProgressBar::new(len as u64);
         if !self.base().quiet {
             progress_bar.set_style(
-                ProgressStyle::default_bar()
-                    .template("[{prefix}] Erasing region at {msg}... {wide_bar} {percent_precise}%")
-                    .unwrap()
-                    .progress_chars("=>-"),
+                ProgressStyle::default_spinner()
+                    .template("[{prefix}] Erasing entire flash at {msg}... {spinner}")
+                    .unwrap(),
             );
             progress_bar.set_message(format!("0x{:08X}", address));
             progress_bar.set_prefix(format!("0x{:02X}", self.step));
@@ -101,10 +100,18 @@ impl SF32LB52Tool {
         let mut buffer = Vec::new();
         let now = std::time::SystemTime::now();
 
+        let timeout_ms = (len as u128 / (4 * 1024) + 1) * 800; // 我们假设每擦除1个sector（4KB）最长时间不超过800ms
+        tracing::info!(
+            "Erase region at 0x{:08X} with length 0x{:08X}, timeout: {} ms",
+            address,
+            len,
+            timeout_ms
+        );
+
         // 等待擦除完成
         loop {
             let elapsed = now.elapsed().unwrap().as_millis();
-            if elapsed > 30000 {
+            if elapsed > timeout_ms {
                 // 擦除可能需要更长时间
                 tracing::error!("response string is {}", String::from_utf8_lossy(&buffer));
                 return Err(std::io::Error::new(
@@ -128,7 +135,7 @@ impl SF32LB52Tool {
 
         if !self.base().quiet {
             progress_bar.finish_with_message(format!(
-                "Erase region successfully: 0x{:08X} (length: 0x{:08X})",
+                "Erase region successfully: 0x{:08X} (length: {} bytes)",
                 address, len
             ));
         }

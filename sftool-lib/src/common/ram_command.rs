@@ -102,7 +102,12 @@ impl RamOps {
 
         // 某些命令直接返回成功，不等待响应
         match cmd {
-            Command::SetBaud { .. } | Command::Read { .. } => return Ok(Response::Ok),
+            Command::SetBaud { .. }
+            | Command::Read { .. }
+            | Command::Erase { .. }
+            | Command::EraseAll { .. } => {
+                return Ok(Response::Ok);
+            }
             _ => (),
         }
 
