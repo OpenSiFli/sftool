@@ -281,6 +281,12 @@ impl SF32LB52Tool {
             data = &data[chunk.len()..];
         }
 
+        // 2.1 Set RTC->BKP0R to 0xA640
+        // RTC->BKP0R address is 0x500cb000 + 0x30
+        let bkp0r_addr = 0x500cb000 + 0x30;
+        let bkp0r_value = 0xA640;
+        self.debug_write_word32(bkp0r_addr, bkp0r_value)?;
+
         // 3. run ram stub
         // 3.1. set SP and PC
         let sp = u32::from_le_bytes(
