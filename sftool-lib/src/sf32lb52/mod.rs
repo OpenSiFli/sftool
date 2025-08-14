@@ -281,11 +281,18 @@ impl SF32LB52Tool {
             data = &data[chunk.len()..];
         }
 
-        // 2.1 Set RTC->BKP0R to 0xA640
+        // 2.1.1 Set RTC->BKP0R to 0xA640
         // RTC->BKP0R address is 0x500cb000 + 0x30
         let bkp0r_addr = 0x500cb000 + 0x30;
         let bkp0r_value = 0xA640;
         self.debug_write_word32(bkp0r_addr, bkp0r_value)?;
+
+        // 2.1.2 Set PA21 GPIO DOSR0
+        let gpio_dosr0_addr = 0x500a0008;
+        let mut gpio_dosr0_value = self.debug_read_word32(gpio_dosr0_addr)?;
+        // PA21 is bit 21, set it to 1
+        gpio_dosr0_value |= 1 << 21;
+        self.debug_write_word32(gpio_dosr0_addr, gpio_dosr0_value)?;
 
         // 3. run ram stub
         // 3.1. set SP and PC
