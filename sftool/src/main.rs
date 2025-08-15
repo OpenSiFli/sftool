@@ -6,7 +6,10 @@ use std::process;
 use strum::{Display, EnumString};
 
 mod config;
+mod progress;
+
 use config::SfToolConfig;
+use progress::create_indicatif_progress_callback;
 
 /// Convert config file WriteFlashFileConfig to string format expected by CLI
 fn config_write_file_to_string(file: &config::WriteFlashFileConfig) -> Result<String, String> {
@@ -476,15 +479,15 @@ fn main() {
 
     let mut siflitool = create_sifli_tool(
         chip_type,
-        SifliToolBase {
-            port_name: port.clone(),
+        SifliToolBase::new_with_progress(
+            port.clone(),
             before,
-            memory_type: memory_type.to_lowercase(),
-            quiet: false,
-            connect_attempts,
+            memory_type.to_lowercase(),
             baud,
+            connect_attempts,
             compat,
-        },
+            create_indicatif_progress_callback(),
+        ),
     );
 
     if baud != 1000000 {

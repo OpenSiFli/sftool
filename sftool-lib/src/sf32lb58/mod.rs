@@ -87,19 +87,12 @@ impl SF32LB58Tool {
 
     fn download_stub_impl(&mut self) -> Result<(), std::io::Error> {
         use crate::ram_stub::{self, CHIP_FILE_NAME, SIG_PUB_FILE};
-        use indicatif::{ProgressBar, ProgressStyle};
 
         tracing::info!("Starting SF32LB58 stub download process");
         self.port.clear(serialport::ClearBuffer::All)?;
 
-        let spinner = ProgressBar::new_spinner();
-        if !self.base.quiet {
-            spinner.enable_steady_tick(std::time::Duration::from_millis(100));
-            spinner.set_style(ProgressStyle::with_template("[{prefix}] {spinner} {msg}").unwrap());
-            spinner.set_prefix(format!("0x{:02X}", self.step));
-            spinner.set_message("Download stub...");
-        }
-        self.step = self.step.wrapping_add(1);
+        let progress = self.progress();
+        let spinner = progress.create_spinner("Download stub...");
 
         // 1. 下载签名公钥文件 (58X_sig_pub.der)
         tracing::debug!("Loading signature public key file: {}", SIG_PUB_FILE);
@@ -111,9 +104,7 @@ impl SF32LB58Tool {
             )
         })?;
 
-        if !self.base.quiet {
-            spinner.set_message("Downloading signature key...");
-        }
+        spinner.set_message("Downloading signature key...");
         self.download_boot_patch_sigkey(&sig_pub_data.data)?;
 
         // 2. 下载RAM stub文件
@@ -142,16 +133,12 @@ impl SF32LB58Tool {
             )
         })?;
 
-        if !self.base.quiet {
-            spinner.set_message("Downloading RAM stub...");
-        }
+        spinner.set_message("Downloading RAM stub...");
 
         // 发送下载镜像命令（flashid = 9 对应RAM stub）
         self.download_image(&stub.data, 9)?;
 
-        if !self.base.quiet {
-            spinner.finish_with_message("Download stub success!");
-        }
+        spinner.finish_with_message("Download stub success!");
 
         tracing::info!("SF32LB58 stub download completed successfully");
         Ok(())

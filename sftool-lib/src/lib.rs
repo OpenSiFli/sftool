@@ -6,6 +6,9 @@ pub mod speed;
 pub mod utils;
 pub mod write_flash;
 
+// 进度条回调系统
+pub mod progress;
+
 // 公共模块，包含可复用的逻辑
 pub mod common;
 
@@ -17,6 +20,7 @@ pub mod sf32lb58;
 use crate::erase_flash::EraseFlashTrait;
 use crate::read_flash::ReadFlashTrait;
 use crate::write_flash::WriteFlashTrait;
+use crate::progress::{ProgressCallbackArc, ProgressHelper, no_op_progress_callback};
 use serialport::SerialPort;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,7 +53,50 @@ pub struct SifliToolBase {
     pub baud: u32,
     pub connect_attempts: i8,
     pub compat: bool,
-    pub quiet: bool,
+    pub progress_callback: ProgressCallbackArc,
+}
+
+impl SifliToolBase {
+    /// 创建一个使用默认空进度回调的 SifliToolBase
+    pub fn new_with_no_progress(
+        port_name: String,
+        before: Operation,
+        memory_type: String,
+        baud: u32,
+        connect_attempts: i8,
+        compat: bool,
+    ) -> Self {
+        Self {
+            port_name,
+            before,
+            memory_type,
+            baud,
+            connect_attempts,
+            compat,
+            progress_callback: no_op_progress_callback(),
+        }
+    }
+
+    /// 创建一个使用自定义进度回调的 SifliToolBase
+    pub fn new_with_progress(
+        port_name: String,
+        before: Operation,
+        memory_type: String,
+        baud: u32,
+        connect_attempts: i8,
+        compat: bool,
+        progress_callback: ProgressCallbackArc,
+    ) -> Self {
+        Self {
+            port_name,
+            before,
+            memory_type,
+            baud,
+            connect_attempts,
+            compat,
+            progress_callback,
+        }
+    }
 }
 
 pub struct WriteFlashParams {
@@ -104,6 +151,11 @@ pub trait SifliToolTrait {
 
     /// 获取当前步骤的可变引用
     fn step_mut(&mut self) -> &mut i32;
+
+    /// 获取进度助手
+    fn progress(&self) -> ProgressHelper {
+        ProgressHelper::new(self.base().progress_callback.clone())
+    }
 
     fn set_speed(&mut self, baud: u32) -> Result<(), std::io::Error>;
     fn soft_reset(&mut self) -> Result<(), std::io::Error>;

@@ -1874,6 +1874,7 @@ name = "sftool"
 version = "0.1.10"
 dependencies = [
  "clap",
+ "indicatif",
  "serde",
  "serde_json",
  "serialport",

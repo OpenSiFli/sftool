@@ -11,19 +11,8 @@ impl EraseOps {
     where
         T: SifliToolTrait + RamCommand,
     {
-        use indicatif::{ProgressBar, ProgressStyle};
-
-        let progress_bar = ProgressBar::new_spinner();
-        if !tool.base().quiet {
-            progress_bar.set_style(
-                ProgressStyle::default_spinner()
-                    .template("[{prefix}] Erasing entire flash at {msg}... {spinner}")
-                    .unwrap(),
-            );
-            progress_bar.set_message(format!("0x{:08X}", address));
-            progress_bar.set_prefix(format!("0x{:02X}", tool.step()));
-            *tool.step_mut() = tool.step().wrapping_add(1);
-        }
+        let progress = tool.progress();
+        let progress_bar = progress.create_spinner(format!("Erasing entire flash at 0x{:08X}...", address));
 
         // 发送擦除所有命令
         let _ = tool.command(Command::EraseAll { address });
@@ -53,9 +42,7 @@ impl EraseOps {
             }
         }
 
-        if !tool.base().quiet {
-            progress_bar.finish_with_message("Erase complete");
-        }
+        progress_bar.finish_with_message("Erase complete");
 
         Ok(())
     }
@@ -65,19 +52,8 @@ impl EraseOps {
     where
         T: SifliToolTrait + RamCommand,
     {
-        use indicatif::{ProgressBar, ProgressStyle};
-
-        let progress_bar = ProgressBar::new_spinner();
-        if !tool.base().quiet {
-            progress_bar.set_style(
-                ProgressStyle::default_spinner()
-                    .template("[{prefix}] Erasing region at {msg}... {spinner}")
-                    .unwrap(),
-            );
-            progress_bar.set_message(format!("0x{:08X} (size: 0x{:08X})", address, len));
-            progress_bar.set_prefix(format!("0x{:02X}", tool.step()));
-            *tool.step_mut() = tool.step().wrapping_add(1);
-        }
+        let progress = tool.progress();
+        let progress_bar = progress.create_spinner(format!("Erasing region at 0x{:08X} (size: 0x{:08X})...", address, len));
 
         // 发送擦除区域命令
         let _ = tool.command(Command::Erase { address, len });
@@ -107,9 +83,7 @@ impl EraseOps {
             }
         }
 
-        if !tool.base().quiet {
-            progress_bar.finish_with_message("Region erase complete");
-        }
+        progress_bar.finish_with_message("Region erase complete");
 
         Ok(())
     }

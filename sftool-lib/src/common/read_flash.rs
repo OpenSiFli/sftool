@@ -1,7 +1,6 @@
 use crate::SifliToolTrait;
 use crate::common::ram_command::{Command, RamCommand};
 use crate::utils::Utils;
-use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::{Read, Seek, Write};
 use tempfile::tempfile;
@@ -61,20 +60,8 @@ impl FlashReader {
     where
         T: SifliToolTrait + RamCommand,
     {
-        let mut step = tool.step();
-
-        let progress_bar = ProgressBar::new(size as u64);
-        if !tool.base().quiet {
-            progress_bar.set_style(
-                ProgressStyle::default_bar()
-                    .template("[{prefix}] {msg} {wide_bar} {bytes_per_sec} {percent_precise}%")
-                    .unwrap()
-                    .progress_chars("=>-"),
-            );
-            progress_bar.set_prefix(format!("0x{:02X}", step));
-            progress_bar.set_message(format!("Reading from 0x{:08X}...", address));
-            step += 1;
-        }
+        let progress = tool.progress();
+        let progress_bar = progress.create_bar(size as u64, format!("Reading from 0x{:08X}...", address));
 
         // 创建临时文件
         let mut temp_file = tempfile()?;
@@ -125,21 +112,16 @@ impl FlashReader {
             remaining -= chunk_size;
             current_address += chunk_size;
 
-            if !tool.base().quiet {
-                progress_bar.inc(chunk_size as u64);
-            }
+            progress_bar.inc(chunk_size as u64);
         }
 
-        if !tool.base().quiet {
-            progress_bar.finish_with_message("Read complete");
-        }
+        progress_bar.finish_with_message("Read complete");
 
         // 将临时文件内容写入目标文件
         temp_file.seek(std::io::SeekFrom::Start(0))?;
         let mut output_file = File::create(output_path)?;
         std::io::copy(&mut temp_file, &mut output_file)?;
 
-        *tool.step_mut() = step;
         Ok(())
     }
 }
