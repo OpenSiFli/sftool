@@ -15,12 +15,7 @@ impl WriteFlashTrait for SF32LB52Tool {
             if !params.erase_all {
                 FlashWriter::write_file_incremental(self, file, params.verify)?;
             } else {
-                FlashWriter::write_file_full_erase(
-                    self,
-                    file,
-                    params.verify,
-                    packet_size,
-                )?;
+                FlashWriter::write_file_full_erase(self, file, params.verify, packet_size)?;
             }
         }
         Ok(())

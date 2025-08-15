@@ -1,9 +1,9 @@
 //! CLI 进度条实现
-//! 
+//!
 //! 这个模块提供基于 indicatif 的进度条实现，用于在 CLI 环境中显示进度
 
-use sftool_lib::progress::{ProgressCallback, ProgressInfo, ProgressId, ProgressType};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use sftool_lib::progress::{ProgressCallback, ProgressId, ProgressInfo, ProgressType};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -51,7 +51,7 @@ impl ProgressCallback for IndicatifProgressCallback {
                 spinner.enable_steady_tick(Duration::from_millis(100));
                 spinner.set_style(
                     ProgressStyle::with_template(&format!("[{}] {{spinner}} {{msg}}", info.prefix))
-                        .unwrap_or_else(|_| ProgressStyle::default_spinner())
+                        .unwrap_or_else(|_| ProgressStyle::default_spinner()),
                 );
                 spinner.set_message(info.message);
                 spinner
@@ -60,11 +60,11 @@ impl ProgressCallback for IndicatifProgressCallback {
                 let bar = self.multi_progress.add(ProgressBar::new(total));
                 bar.set_style(
                     ProgressStyle::with_template(&format!(
-                        "[{}] {{msg}} {{wide_bar}} {{bytes_per_sec}} {{percent_precise}}%", 
+                        "[{}] {{msg}} {{wide_bar}} {{bytes_per_sec}} {{percent_precise}}%",
                         info.prefix
                     ))
                     .unwrap_or_else(|_| ProgressStyle::default_bar())
-                    .progress_chars("=>-")
+                    .progress_chars("=>-"),
                 );
                 bar.set_message(info.message);
                 if let Some(current) = info.current {
@@ -75,10 +75,7 @@ impl ProgressCallback for IndicatifProgressCallback {
         };
 
         // 存储进度条引用
-        self.progress_bars
-            .lock()
-            .unwrap()
-            .insert(id, progress_bar);
+        self.progress_bars.lock().unwrap().insert(id, progress_bar);
 
         progress_id
     }

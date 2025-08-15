@@ -12,7 +12,8 @@ impl EraseOps {
         T: SifliToolTrait + RamCommand,
     {
         let progress = tool.progress();
-        let progress_bar = progress.create_spinner(format!("Erasing entire flash at 0x{:08X}...", address));
+        let progress_bar =
+            progress.create_spinner(format!("Erasing entire flash at 0x{:08X}...", address));
 
         // 发送擦除所有命令
         let _ = tool.command(Command::EraseAll { address });
@@ -53,7 +54,10 @@ impl EraseOps {
         T: SifliToolTrait + RamCommand,
     {
         let progress = tool.progress();
-        let progress_bar = progress.create_spinner(format!("Erasing region at 0x{:08X} (size: 0x{:08X})...", address, len));
+        let progress_bar = progress.create_spinner(format!(
+            "Erasing region at 0x{:08X} (size: 0x{:08X})...",
+            address, len
+        ));
 
         // 发送擦除区域命令
         let _ = tool.command(Command::Erase { address, len });

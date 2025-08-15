@@ -188,7 +188,8 @@ impl SF32LB56Tool {
         use ram_command::{Command, RamCommand};
 
         let progress = self.progress();
-        let spinner = progress.create_spinner(format!("Erasing entire flash at 0x{:08X}...", address));
+        let spinner =
+            progress.create_spinner(format!("Erasing entire flash at 0x{:08X}...", address));
 
         // 发送擦除所有命令
         let _ = self.command(Command::EraseAll { address });
@@ -231,7 +232,10 @@ impl SF32LB56Tool {
         use ram_command::{Command, RamCommand};
 
         let progress = self.progress();
-        let spinner = progress.create_spinner(format!("Erasing region at 0x{:08X} (size: 0x{:08X})...", address, len));
+        let spinner = progress.create_spinner(format!(
+            "Erasing region at 0x{:08X} (size: 0x{:08X})...",
+            address, len
+        ));
 
         // 发送擦除区域命令
         let _ = self.command(Command::Erase { address, len });
@@ -380,8 +384,7 @@ impl SF32LB56Tool {
                 .expect("REASON"),
         );
         let Some(stub) = stub else {
-            spinner
-                .finish_with_message("No stub file found for the given chip and memory type");
+            spinner.finish_with_message("No stub file found for the given chip and memory type");
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 "No stub file found for the given chip and memory type",
@@ -432,10 +435,7 @@ impl SifliTool for SF32LB56Tool {
         port.write_request_to_send(false).unwrap();
         std::thread::sleep(Duration::from_millis(100));
 
-        let mut tool = Box::new(Self {
-            base,
-            port,
-        });
+        let mut tool = Box::new(Self { base, port });
         tool.download_stub().expect("Failed to download stub");
         tool
     }

@@ -18,9 +18,9 @@ pub mod sf32lb56;
 pub mod sf32lb58;
 
 use crate::erase_flash::EraseFlashTrait;
+use crate::progress::{ProgressCallbackArc, ProgressHelper, no_op_progress_callback};
 use crate::read_flash::ReadFlashTrait;
 use crate::write_flash::WriteFlashTrait;
-use crate::progress::{ProgressCallbackArc, ProgressHelper, no_op_progress_callback};
 use serialport::SerialPort;
 use std::sync::Arc;
 

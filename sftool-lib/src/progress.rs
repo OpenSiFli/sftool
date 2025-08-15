@@ -1,5 +1,5 @@
 //! 进度条回调系统
-//! 
+//!
 //! 这个模块定义了进度条的抽象接口，允许用户在不同环境（CLI、GUI等）中
 //! 自定义进度条的显示方式。
 
@@ -28,34 +28,34 @@ pub struct ProgressInfo {
 }
 
 /// 进度回调 trait
-/// 
+///
 /// 实现此 trait 以自定义进度条的显示方式
 pub trait ProgressCallback: Send + Sync {
     /// 开始一个新的进度条
-    /// 
+    ///
     /// # 参数
     /// - `info`: 进度条信息
-    /// 
+    ///
     /// # 返回值
     /// 返回一个进度条 ID，用于后续的更新和完成操作
     fn start(&self, info: ProgressInfo) -> ProgressId;
 
     /// 更新进度条的消息
-    /// 
+    ///
     /// # 参数
     /// - `id`: 进度条 ID
     /// - `message`: 新的消息
     fn update_message(&self, id: ProgressId, message: String);
 
     /// 增加进度（仅对 Bar 类型有效）
-    /// 
+    ///
     /// # 参数
     /// - `id`: 进度条 ID
     /// - `delta`: 增加的进度量
     fn increment(&self, id: ProgressId, delta: u64);
 
     /// 完成进度条
-    /// 
+    ///
     /// # 参数
     /// - `id`: 进度条 ID
     /// - `final_message`: 最终消息
@@ -67,7 +67,7 @@ pub trait ProgressCallback: Send + Sync {
 pub struct ProgressId(pub u64);
 
 /// 默认的空进度回调实现
-/// 
+///
 /// 这个实现不会产生任何输出，适用于不需要进度显示的场景
 #[derive(Debug, Default)]
 pub struct NoOpProgressCallback;
@@ -93,7 +93,7 @@ pub fn no_op_progress_callback() -> ProgressCallbackArc {
 }
 
 /// 进度条助手结构体
-/// 
+///
 /// 提供便捷的方法来创建和管理进度条
 pub struct ProgressHelper {
     callback: ProgressCallbackArc,
@@ -160,7 +160,7 @@ impl ProgressHelper {
 }
 
 /// 进度条处理器
-/// 
+///
 /// 用于操作单个进度条实例
 pub struct ProgressHandler {
     callback: ProgressCallbackArc,

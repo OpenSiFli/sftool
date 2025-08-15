@@ -17,7 +17,7 @@ impl FlashWriter {
     {
         let progress = tool.progress();
         let spinner = progress.create_spinner("Erasing all flash regions...");
-        
+
         let mut erase_address: Vec<u32> = Vec::new();
         for f in write_flash_files.iter() {
             let address = f.address & 0xFF00_0000;
@@ -28,7 +28,7 @@ impl FlashWriter {
             tool.command(Command::EraseAll { address: f.address })?;
             erase_address.push(address);
         }
-        
+
         spinner.finish_with_message("All flash regions erased");
         Ok(())
     }
@@ -40,7 +40,7 @@ impl FlashWriter {
     {
         let progress = tool.progress();
         let spinner = progress.create_spinner("Verifying data...");
-        
+
         let response = tool.command(Command::Verify { address, len, crc })?;
         if response != Response::Ok {
             return Err(std::io::Error::new(
@@ -48,7 +48,7 @@ impl FlashWriter {
                 "Verify failed",
             ));
         }
-        
+
         spinner.finish_with_message("Verify success!");
         Ok(())
     }
@@ -80,10 +80,10 @@ impl FlashWriter {
         }
 
         re_download_spinner.finish_with_message("Need to re-download");
-        
+
         let download_bar = progress.create_bar(
             file.file.metadata()?.len(),
-            format!("Download at 0x{:08X}...", file.address)
+            format!("Download at 0x{:08X}...", file.address),
         );
 
         let res = tool.command(Command::WriteAndErase {
@@ -145,7 +145,7 @@ impl FlashWriter {
         let progress = tool.progress();
         let download_bar = progress.create_bar(
             file.file.metadata()?.len(),
-            format!("Download at 0x{:08X}...", file.address)
+            format!("Download at 0x{:08X}...", file.address),
         );
 
         let mut buffer = vec![0u8; packet_size];
@@ -176,7 +176,7 @@ impl FlashWriter {
             address += bytes_read as u32;
             download_bar.inc(bytes_read as u64);
         }
-        
+
         download_bar.finish_with_message("Download success!");
 
         // verify

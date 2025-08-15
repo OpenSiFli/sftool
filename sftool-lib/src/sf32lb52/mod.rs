@@ -25,7 +25,8 @@ impl SF32LB52Tool {
         use ram_command::{Command, RamCommand};
 
         let progress = self.progress();
-        let spinner = progress.create_spinner(format!("Erasing entire flash at 0x{:08X}...", address));
+        let spinner =
+            progress.create_spinner(format!("Erasing entire flash at 0x{:08X}...", address));
 
         // 发送擦除所有命令
         let _ = self.command(Command::EraseAll { address });
@@ -68,7 +69,8 @@ impl SF32LB52Tool {
         use ram_command::{Command, RamCommand};
 
         let progress = self.progress();
-        let spinner = progress.create_spinner(format!("Erasing entire flash at 0x{:08X}...", address));
+        let spinner =
+            progress.create_spinner(format!("Erasing entire flash at 0x{:08X}...", address));
 
         // 发送擦除区域命令
         let _ = self.command(Command::Erase { address, len });
@@ -279,10 +281,7 @@ impl SifliTool for SF32LB52Tool {
         port.write_request_to_send(false).unwrap();
         std::thread::sleep(Duration::from_millis(100));
 
-        let mut tool = Box::new(Self {
-            base,
-            port,
-        });
+        let mut tool = Box::new(Self { base, port });
         tool.download_stub().expect("Failed to download stub");
         tool
     }

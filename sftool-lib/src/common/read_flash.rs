@@ -61,7 +61,8 @@ impl FlashReader {
         T: SifliToolTrait + RamCommand,
     {
         let progress = tool.progress();
-        let progress_bar = progress.create_bar(size as u64, format!("Reading from 0x{:08X}...", address));
+        let progress_bar =
+            progress.create_bar(size as u64, format!("Reading from 0x{:08X}...", address));
 
         // 创建临时文件
         let mut temp_file = tempfile()?;
