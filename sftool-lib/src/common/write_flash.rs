@@ -57,7 +57,6 @@ impl FlashWriter {
     pub fn write_file_incremental<T>(
         tool: &mut T,
         file: &WriteFlashFile,
-        _step: &mut i32,
         verify: bool,
     ) -> Result<(), std::io::Error>
     where
@@ -137,7 +136,6 @@ impl FlashWriter {
     pub fn write_file_full_erase<T>(
         tool: &mut T,
         file: &WriteFlashFile,
-        _step: &mut i32,
         verify: bool,
         packet_size: usize,
     ) -> Result<(), std::io::Error>

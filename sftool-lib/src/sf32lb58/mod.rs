@@ -16,7 +16,6 @@ use std::time::Duration;
 pub struct SF32LB58Tool {
     pub base: SifliToolBase,
     pub port: Box<dyn SerialPort>,
-    pub step: i32,
 }
 
 /// DFU协议命令类型
@@ -346,7 +345,6 @@ impl SifliTool for SF32LB58Tool {
         let mut tool = Box::new(Self {
             base,
             port,
-            step: 0,
         });
         tool.download_stub().expect("Failed to download stub");
         tool
@@ -360,14 +358,6 @@ impl SifliToolTrait for SF32LB58Tool {
 
     fn base(&self) -> &SifliToolBase {
         &self.base
-    }
-
-    fn step(&self) -> i32 {
-        self.step
-    }
-
-    fn step_mut(&mut self) -> &mut i32 {
-        &mut self.step
     }
 
     fn set_speed(&mut self, _baud: u32) -> Result<(), std::io::Error> {

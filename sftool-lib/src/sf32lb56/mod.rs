@@ -140,7 +140,6 @@ impl ChipFrameFormat for SF32LB56FrameFormat {
 pub struct SF32LB56Tool {
     pub base: SifliToolBase,
     pub port: Box<dyn SerialPort>,
-    pub step: i32,
 }
 
 // SifliDebug trait implementation for SF32LB56Tool
@@ -436,7 +435,6 @@ impl SifliTool for SF32LB56Tool {
         let mut tool = Box::new(Self {
             base,
             port,
-            step: 0,
         });
         tool.download_stub().expect("Failed to download stub");
         tool
@@ -450,14 +448,6 @@ impl SifliToolTrait for SF32LB56Tool {
 
     fn base(&self) -> &SifliToolBase {
         &self.base
-    }
-
-    fn step(&self) -> i32 {
-        self.step
-    }
-
-    fn step_mut(&mut self) -> &mut i32 {
-        &mut self.step
     }
 
     fn set_speed(&mut self, baud: u32) -> Result<(), std::io::Error> {

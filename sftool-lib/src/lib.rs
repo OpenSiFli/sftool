@@ -22,6 +22,7 @@ use crate::read_flash::ReadFlashTrait;
 use crate::write_flash::WriteFlashTrait;
 use crate::progress::{ProgressCallbackArc, ProgressHelper, no_op_progress_callback};
 use serialport::SerialPort;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
@@ -54,6 +55,7 @@ pub struct SifliToolBase {
     pub connect_attempts: i8,
     pub compat: bool,
     pub progress_callback: ProgressCallbackArc,
+    pub progress_helper: Arc<ProgressHelper>,
 }
 
 impl SifliToolBase {
@@ -66,6 +68,8 @@ impl SifliToolBase {
         connect_attempts: i8,
         compat: bool,
     ) -> Self {
+        let progress_callback = no_op_progress_callback();
+        let progress_helper = Arc::new(ProgressHelper::new(progress_callback.clone(), 0));
         Self {
             port_name,
             before,
@@ -73,7 +77,8 @@ impl SifliToolBase {
             baud,
             connect_attempts,
             compat,
-            progress_callback: no_op_progress_callback(),
+            progress_callback,
+            progress_helper,
         }
     }
 
@@ -87,6 +92,7 @@ impl SifliToolBase {
         compat: bool,
         progress_callback: ProgressCallbackArc,
     ) -> Self {
+        let progress_helper = Arc::new(ProgressHelper::new(progress_callback.clone(), 0));
         Self {
             port_name,
             before,
@@ -95,6 +101,7 @@ impl SifliToolBase {
             connect_attempts,
             compat,
             progress_callback,
+            progress_helper,
         }
     }
 }
@@ -146,15 +153,10 @@ pub trait SifliToolTrait {
     /// 获取基础配置的引用
     fn base(&self) -> &SifliToolBase;
 
-    /// 获取当前步骤
-    fn step(&self) -> i32;
-
-    /// 获取当前步骤的可变引用
-    fn step_mut(&mut self) -> &mut i32;
-
     /// 获取进度助手
-    fn progress(&self) -> ProgressHelper {
-        ProgressHelper::new(self.base().progress_callback.clone())
+    fn progress(&mut self) -> Arc<ProgressHelper> {
+        // 使用共享的进度助手，它会自动处理步骤计数
+        self.base().progress_helper.clone()
     }
 
     fn set_speed(&mut self, baud: u32) -> Result<(), std::io::Error>;

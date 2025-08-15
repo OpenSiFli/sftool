@@ -97,19 +97,19 @@ pub fn no_op_progress_callback() -> ProgressCallbackArc {
 /// 提供便捷的方法来创建和管理进度条
 pub struct ProgressHelper {
     callback: ProgressCallbackArc,
-    step_counter: std::sync::atomic::AtomicI32,
+    step_counter: Arc<std::sync::atomic::AtomicI32>,
 }
 
 impl ProgressHelper {
-    /// 创建新的进度助手
-    pub fn new(callback: ProgressCallbackArc) -> Self {
+    /// 创建新的进度助手，从指定的初始步骤开始
+    pub fn new(callback: ProgressCallbackArc, initial_step: i32) -> Self {
         Self {
             callback,
-            step_counter: std::sync::atomic::AtomicI32::new(0),
+            step_counter: Arc::new(std::sync::atomic::AtomicI32::new(initial_step)),
         }
     }
 
-    /// 获取下一个步骤号并递增
+    /// 获取下一个步骤号并递增计数器
     fn next_step(&self) -> i32 {
         self.step_counter
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
@@ -150,6 +150,12 @@ impl ProgressHelper {
     /// 获取当前步骤号（不递增）
     pub fn current_step(&self) -> i32 {
         self.step_counter.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// 同步步骤计数器到外部计数器
+    /// 这个方法用于将内部计数器的值同步到工具的 step 字段
+    pub fn sync_step_to_external(&self, external_step: &mut i32) {
+        *external_step = self.current_step();
     }
 }
 
