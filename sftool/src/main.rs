@@ -192,6 +192,10 @@ struct Cli {
     #[arg(long = "compat")]
     compat: Option<bool>,
 
+    /// Suppress progress bar output (default: false)
+    #[arg(short = 'q', long = "quiet")]
+    quiet: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -282,6 +286,7 @@ fn merge_config(
         Operation,
         i8,
         bool,
+        bool,
     ),
     String,
 > {
@@ -325,7 +330,7 @@ fn merge_config(
         .connect_attempts
         .unwrap_or(base_config.connect_attempts);
     let compat = args.compat.unwrap_or(base_config.compat);
-
+    let quiet = args.quiet;
     // 验证必需字段
     if port.is_empty() {
         return Err("Port must be specified either via --port or in config file".to_string());
@@ -340,6 +345,7 @@ fn merge_config(
         after,
         connect_attempts,
         compat,
+        quiet,
     ))
 }
 
@@ -459,7 +465,7 @@ fn main() {
     };
 
     // Merge CLI args with config file, CLI args take precedence
-    let (chip_type, memory_type, port, baud, before, after, connect_attempts, compat) =
+    let (chip_type, memory_type, port, baud, before, after, connect_attempts, compat, quiet) =
         match merge_config(&args, config.clone()) {
             Ok(merged) => merged,
             Err(e) => {
@@ -486,7 +492,11 @@ fn main() {
             baud,
             connect_attempts,
             compat,
-            create_indicatif_progress_callback(),
+            if quiet {
+                sftool_lib::progress::no_op_progress_callback()
+            } else {
+                create_indicatif_progress_callback()
+            },
         ),
     );
 

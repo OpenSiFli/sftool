@@ -98,6 +98,8 @@ pub struct SfToolConfig {
     pub connect_attempts: i8,
     #[serde(default)]
     pub compat: bool,
+    #[serde(default)]
+    pub quiet: bool,
 
     // 命令 - 只能存在其中一个
     pub write_flash: Option<WriteFlashCommandConfig>,
@@ -142,6 +144,7 @@ impl SfToolConfig {
             after: Defaults::AFTER.to_string(),
             connect_attempts: Defaults::CONNECT_ATTEMPTS,
             compat: Defaults::COMPAT,
+            quiet: false,
             write_flash: None,
             read_flash: None,
             erase_flash: None,

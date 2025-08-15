@@ -46,6 +46,11 @@
       "default": false,
       "description": "Enable compatibility mode"
     },
+    "quiet": {
+      "type": "boolean",
+      "default": false,
+      "description": "Suppress progress bar output"
+    },
     "write_flash": {
       "$ref": "#/definitions/writeFlashCommand"
     },
