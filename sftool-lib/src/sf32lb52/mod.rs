@@ -19,6 +19,11 @@ pub struct SF32LB52Tool {
     pub port: Box<dyn SerialPort>,
 }
 
+// 为 SF32LB52Tool 实现 Send 和 Sync
+// 注意：这假设串口操作在设计上是线程安全的，或者我们会确保同一时间只有一个线程访问
+unsafe impl Send for SF32LB52Tool {}
+unsafe impl Sync for SF32LB52Tool {}
+
 impl SF32LB52Tool {
     /// 执行全部flash擦除的内部方法
     pub fn internal_erase_all(&mut self, address: u32) -> Result<(), std::io::Error> {

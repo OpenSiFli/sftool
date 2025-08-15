@@ -18,6 +18,10 @@ pub struct SF32LB58Tool {
     pub port: Box<dyn SerialPort>,
 }
 
+// 为 SF32LB58Tool 实现 Send 和 Sync
+unsafe impl Send for SF32LB58Tool {}
+unsafe impl Sync for SF32LB58Tool {}
+
 /// DFU协议命令类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]

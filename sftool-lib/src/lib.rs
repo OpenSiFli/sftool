@@ -17,10 +17,12 @@ pub mod sf32lb52;
 pub mod sf32lb56;
 pub mod sf32lb58;
 
-use crate::erase_flash::EraseFlashTrait;
+// 重新导出 trait，使其在 crate 外部可用
+pub use crate::erase_flash::EraseFlashTrait;
+pub use crate::read_flash::ReadFlashTrait;
+pub use crate::write_flash::WriteFlashTrait;
+
 use crate::progress::{ProgressCallbackArc, ProgressHelper, no_op_progress_callback};
-use crate::read_flash::ReadFlashTrait;
-use crate::write_flash::WriteFlashTrait;
 use serialport::SerialPort;
 use std::sync::Arc;
 
@@ -146,7 +148,7 @@ pub struct EraseRegionFile {
     pub size: u32,
 }
 
-pub trait SifliToolTrait {
+pub trait SifliToolTrait: Send + Sync {
     /// 获取串口的可变引用
     fn port(&mut self) -> &mut Box<dyn SerialPort>;
 
@@ -163,7 +165,7 @@ pub trait SifliToolTrait {
     fn soft_reset(&mut self) -> Result<(), std::io::Error>;
 }
 
-pub trait SifliTool: SifliToolTrait + WriteFlashTrait + ReadFlashTrait + EraseFlashTrait {
+pub trait SifliTool: SifliToolTrait + WriteFlashTrait + ReadFlashTrait + EraseFlashTrait + Send + Sync {
     /// 工厂函数，根据芯片类型创建对应的 SifliTool 实现
     fn create_tool(base_param: SifliToolBase) -> Box<dyn SifliTool>
     where

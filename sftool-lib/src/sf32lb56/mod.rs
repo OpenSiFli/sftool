@@ -142,6 +142,10 @@ pub struct SF32LB56Tool {
     pub port: Box<dyn SerialPort>,
 }
 
+// 为 SF32LB56Tool 实现 Send 和 Sync
+unsafe impl Send for SF32LB56Tool {}
+unsafe impl Sync for SF32LB56Tool {}
+
 // SifliDebug trait implementation for SF32LB56Tool
 impl SifliDebug for SF32LB56Tool {
     fn debug_command(
