@@ -84,6 +84,7 @@ impl RamOps {
     pub fn send_command_and_wait_response(
         port: &mut Box<dyn SerialPort>,
         cmd: Command,
+        memory_type: &str,
     ) -> Result<Response, std::io::Error> {
         tracing::debug!("command: {:?}", cmd);
 
@@ -98,6 +99,11 @@ impl RamOps {
         let timeout = match cmd {
             Command::EraseAll { .. } => Self::ERASE_ALL_TIMEOUT_MS,
             _ => Self::DEFAULT_TIMEOUT_MS,
+        };
+        let timeout = if memory_type == "sd" {
+            timeout * 3
+        } else {
+            timeout
         };
 
         // 某些命令直接返回成功，不等待响应

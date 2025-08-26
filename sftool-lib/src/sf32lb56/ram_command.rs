@@ -7,7 +7,7 @@ pub use crate::common::ram_command::{Command, DownloadStub, RamCommand, Response
 
 impl RamCommand for SF32LB56Tool {
     fn command(&mut self, cmd: Command) -> Result<Response, std::io::Error> {
-        RamOps::send_command_and_wait_response(&mut self.port, cmd)
+        RamOps::send_command_and_wait_response(&mut self.port, cmd, self.base.memory_type.as_str())
     }
 
     fn send_data(&mut self, data: &[u8]) -> Result<Response, std::io::Error> {
@@ -29,12 +29,23 @@ impl DownloadStub for SF32LB56Tool {
         self.port.clear(serialport::ClearBuffer::All)?;
         self.debug_command(SifliUartCommand::Exit)?;
 
-        // 等待shell提示符 "msh >"
-        RamOps::wait_for_shell_prompt(
-            &mut self.port,
-            b"msh >",
-            200, // 200ms间隔
-            5,   // 最多重试5次
-        )
+        // 根据memory_type选择不同的等待条件
+        if self.base.memory_type == "sd" {
+            // SD卡模式：等待 "sd0 OPEN success"，超时5秒
+            RamOps::wait_for_shell_prompt(
+                &mut self.port,
+                b"sd0 OPEN success",
+                1000, // 1秒间隔
+                5,    // 最多重试5次 (总计5秒)
+            )
+        } else {
+            // 非SD模式：等待shell提示符 "msh >"
+            RamOps::wait_for_shell_prompt(
+                &mut self.port,
+                b"msh >",
+                200, // 200ms间隔
+                5,   // 最多重试5次
+            )
+        }
     }
 }
