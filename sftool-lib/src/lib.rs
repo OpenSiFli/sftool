@@ -165,7 +165,9 @@ pub trait SifliToolTrait: Send + Sync {
     fn soft_reset(&mut self) -> Result<(), std::io::Error>;
 }
 
-pub trait SifliTool: SifliToolTrait + WriteFlashTrait + ReadFlashTrait + EraseFlashTrait + Send + Sync {
+pub trait SifliTool:
+    SifliToolTrait + WriteFlashTrait + ReadFlashTrait + EraseFlashTrait + Send + Sync
+{
     /// 工厂函数，根据芯片类型创建对应的 SifliTool 实现
     fn create_tool(base_param: SifliToolBase) -> Box<dyn SifliTool>
     where
