@@ -1,0 +1,236 @@
+name: Feature Request
+description: Suggest an idea or improvement for sftool command-line tool
+title: "[FEATURE] "
+labels: ['Type: Feature Request', 'Status: Needs Discussion']
+assignees:
+  -
+body:
+  - type: markdown
+    attributes:
+      value: |
+        * We welcome any ideas or feature requests for sftool! It's helpful if you can explain exactly why the feature would be useful.
+        * Please check the [existing feature requests](https://github.com/OpenSiFli/sftool/labels/Type%3A%20Feature%20Request) first to avoid duplicates.
+        * Consider browsing the [SiFli documentation](https://wiki.sifli.com/) to see if the functionality already exists.
+
+  - type: textarea
+    id: problem-related
+    attributes:
+      label: Is your feature request related to a problem?
+      description: Please provide a clear and concise description of what the problem or limitation is.
+      placeholder: ex. I'm always frustrated when I need to manually flash multiple chips one by one because sftool doesn't support batch operations...
+    validations:
+      required: false
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Describe the solution you'd like
+      description: Please provide a clear and concise description of what you want to happen.
+      placeholder: ex. I would like sftool to accept a configuration file that specifies multiple chips and their respective firmware files, then flash them all sequentially or in parallel...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Describe alternatives you've considered
+      description: Please provide a clear and concise description of any alternative solutions or features you've considered.
+      placeholder: ex. I considered writing shell scripts to call sftool multiple times, but this doesn't provide unified error handling and progress reporting...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: feature-category
+    attributes:
+      label: Feature Category
+      description: What type of feature is this?
+      options:
+        - Flash Operations - New flash commands, verification methods, memory management
+        - Chip Support - New SiFli chip models, protocols, or hardware features
+        - Command-line Interface - New commands, arguments, output formats, help system
+        - Connectivity - Serial port detection, USB protocols, communication improvements
+        - Performance - Speed optimizations, parallel operations, memory efficiency
+        - Configuration - Config files, environment variables, preset commands
+        - Automation - Batch processing, scripting support, CI/CD integration
+        - Debugging/Logging - Enhanced debug output, logging options, diagnostics
+        - Library API - Improvements to sftool-lib for Rust integration
+        - Cross-platform - Windows, macOS, Linux specific improvements
+        - Documentation - Command help, examples, usage guides
+        - Other (please specify in description)
+      default: 0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority Level
+      description: How important is this feature for your development workflow?
+      options:
+        - Low - Nice to have, would be a welcome addition
+        - Medium - Would significantly improve my development efficiency
+        - High - Critical for my team's workflow or project requirements
+      default: 1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: user-type
+    attributes:
+      label: Primary User Type
+      description: Which type of user would benefit most from this feature?
+      options:
+        - Firmware Developer - Engineers writing embedded software
+        - Hardware Engineer - Board designers and hardware developers
+        - Production Engineer - Manufacturing and testing teams
+        - DevOps/CI Engineer - Automation and continuous integration
+        - Hobbyist/Maker - Individual developers and makers
+        - System Integrator - Integrating sftool into larger workflows
+        - All Users - Would benefit everyone using sftool
+      default: 6
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: Use Cases and Examples
+      description: Please provide specific scenarios where this feature would be helpful
+      placeholder: |
+        1. When flashing multiple development boards in production, I need to...
+        2. During automated testing, it would help if sftool could...
+        3. For debugging firmware issues, this feature would enable...
+        4. In CI/CD pipelines, this would allow...
+        
+        Example commands you'd like to run:
+        sftool batch-flash --config production.toml
+        sftool --output-format json read_flash 0x0@1024
+
+  - type: textarea
+    id: target-hardware
+    attributes:
+      label: Target Hardware/Chips
+      description: If this feature is hardware-specific, please specify which SiFli chips or hardware setups
+      placeholder: |
+        - Specific chip models: SF32LB52, SF32LB55, SF32LB56, SF32LB58, etc.
+        - Development boards: SiFli EVK, Yellow Mountain派, custom boards
+        - Connection types: USB, UART, SWD, DFU
+        - Memory types: NOR Flash, NAND Flash, PSRAM
+        - Or mark as "All hardware" if generally applicable
+
+  - type: textarea
+    id: proposed-interface
+    attributes:
+      label: Proposed Command-line Interface
+      description: Describe the ideal command syntax and arguments for this feature
+      placeholder: |
+        Example command syntax:
+        
+        sftool [GLOBAL_OPTIONS] <new-command> [COMMAND_OPTIONS] [ARGUMENTS]
+        
+        Specific examples:
+        sftool -c SF32LB52 batch-flash --config chips.yaml
+        sftool --format json chip-info -p /dev/ttyUSB0
+        sftool -c SF32LB52 -p COM3 flash-verify --checksum md5 app.bin@0x10000
+        
+        New global options:
+        --config-file: Specify configuration file
+        --parallel: Enable parallel operations
+        --output-format: json|yaml|table (for structured output)
+
+  - type: textarea
+    id: configuration-format
+    attributes:
+      label: Configuration File Format (if applicable)
+      description: If this feature involves configuration files, show the proposed format
+      placeholder: |
+        Example YAML/TOML configuration:
+        
+        ```yaml
+        chips:
+          - name: "Device1"
+            chip: "SF32LB52"
+            port: "/dev/ttyUSB0"
+            files:
+              - "bootloader.bin@0x12010000"
+              - "app.bin@0x12020000"
+          - name: "Device2"
+            chip: "SF32LB52" 
+            port: "/dev/ttyUSB1"
+            files:
+              - "app.bin@0x12020000"
+        options:
+          verify: true
+          erase_all: false
+        ```
+
+  - type: textarea
+    id: technical-considerations
+    attributes:
+      label: Technical Considerations
+      description: Any technical aspects, limitations, or implementation ideas you've considered
+      placeholder: |
+        ex. This feature might require:
+        - New Rust dependencies for YAML/TOML parsing
+        - Thread pool for parallel flash operations
+        - Enhanced error handling for batch operations
+        - Changes to sftool-lib API for programmatic access
+        - Serial port locking to prevent conflicts
+        - Progress reporting with multiple devices
+        - Graceful handling of partial failures
+        - Cross-platform path handling
+
+  - type: textarea
+    id: backward-compatibility
+    attributes:
+      label: Backward Compatibility
+      description: How should this feature interact with existing sftool functionality?
+      placeholder: |
+        - Should existing command syntax remain unchanged?
+        - Are there any breaking changes to consider?
+        - How should new options interact with existing flags?
+        - Should this be opt-in via new commands or modify existing ones?
+        - Any migration path needed for existing scripts/workflows?
+
+  - type: textarea
+    id: error-handling
+    attributes:
+      label: Error Handling and Edge Cases
+      description: How should errors and edge cases be handled?
+      placeholder: |
+        - What happens when one device in a batch operation fails?
+        - How to handle disconnected devices during operation?
+        - Serial port conflicts with other applications
+        - Invalid configuration file formats
+        - Insufficient permissions for device access
+        - Memory constraints with large files
+        - Network timeouts (if applicable)
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, references to similar tools, or examples about the feature request here
+      placeholder: |
+        ex. Similar tools like esptool.py have this feature implemented as...
+        - Links to similar features in other flashing tools
+        - References to SiFli documentation sections
+        - Examples from other command-line tools (cargo, git, etc.)
+        - Industry standards or protocols this should follow
+        - Team/project context that drives this need
+        - Performance benchmarks or requirements
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      description: Please confirm you have completed the following
+      options:
+        - label: I have searched existing issues and this is not a duplicate
+          required: true
+        - label: I have provided sufficient details for the development team to understand the request
+          required: true
+        - label: I have considered how this feature would integrate with existing sftool commands
+          required: false
+        - label: I understand this is a command-line tool and my request is appropriate for CLI usage
+          required: true
