@@ -1,0 +1,287 @@
+name: Bug Report
+description: Report bugs in sftool command-line tool
+title: "[BUG] "
+labels: ['Type: Bug', 'Status: Needs Triage']
+assignees:
+  - 
+body:
+  - type: markdown
+    attributes:
+      value: |
+        * Thanks for taking the time to fill out this bug report for sftool!
+        * Please provide as much detail as possible to help us reproduce and fix the issue.
+        * Check the [existing issues](https://github.com/OpenSiFli/sftool/issues) first.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission checklist
+      description: Before submitting a new issue, please follow the checklist and try to find the answer.
+      options:
+        - label: I have read the SiFli documentation and the issue is not addressed there.
+          required: true
+        - label: I have updated to the latest version of sftool and confirmed the issue still exists.
+          required: true
+        - label: I have searched the issue tracker for a similar issue and not found a duplicate.
+          required: true
+    validations:
+      required: true
+
+  - type: dropdown
+    id: bug_category
+    attributes:
+      label: Bug Category
+      description: What type of issue are you experiencing?
+      options:
+        - Flash Operations - Problems with write_flash, read_flash, erase operations
+        - Chip Communication - Connection timeouts, protocol errors, handshake failures
+        - Installation/Setup - Issues installing prebuilt binaries or setting up the tool
+        - Build from Source - Problems building sftool from Rust source code
+        - Command-line Interface - Argument parsing, help text, command execution issues
+        - Cross-platform - Platform-specific problems (Windows, macOS, Linux)
+        - Performance - Slow flash operations, memory usage, timeouts
+        - Library Integration - Issues using sftool-lib in Rust projects
+        - Other (please specify in description)
+      default: 0
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: sftool Version
+      description: Which version of sftool are you using? Run `sftool --version` to check.
+      placeholder: ex. sftool 0.1.10, 0.1.9, or commit hash if building from source
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operating_system
+    attributes:
+      label: Operating System
+      description: Which operating system are you running sftool on?
+      multiple: false
+      options:
+        - Windows 10
+        - Windows 11
+        - macOS (Intel)
+        - macOS (Apple Silicon)
+        - Linux (Ubuntu/Debian)
+        - Linux (Arch/Manjaro)
+        - Linux (CentOS/RHEL/Fedora)
+        - Linux (Other distribution)
+      default: 0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: chip_model
+    attributes:
+      label: Target SiFli Chip Model
+      description: Which SiFli chip are you trying to interact with?
+      options:
+        - Not applicable - Installation/CLI issue
+        - SF32LB52
+        - SF32LB52X
+        - SF32LB55
+        - SF32LB56
+        - SF32LB58
+        - Other (please specify in description)
+      default: 1
+    validations:
+      required: true
+
+  - type: textarea
+    id: command-executed
+    attributes:
+      label: Command Executed
+      description: What command did you run when the bug occurred?
+      placeholder: |
+        ex. sftool -c SF32LB52 -p /dev/ttyUSB0 write_flash --verify app.bin@0x12020000
+        or: sftool -c SF32LB52 -p COM3 write_flash bootloader.bin@0x12010000 app.bin@0x12020000
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is
+      placeholder: ex. The tool fails to connect to SF32LB52 with "Connection timeout" error... / Installation fails with "Failed to extract archive"...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: What is the expected behavior?
+      description: Please provide a clear and concise description of what you expected to happen.
+      placeholder: I expected the chip to connect successfully and flash the firmware... / I expected sftool to install without errors...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: What is the actual behavior?
+      description: Please describe what actually happened instead.
+      placeholder: Instead, the connection fails after 7 attempts... / Instead, the binary extraction fails...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Steps to reproduce
+      description: How did the issue occur? Please provide detailed step-by-step instructions.
+      value: |
+        1. [Setup] Connect SF32LBxx chip via USB/UART to computer
+        2. [Command] Run: sftool -c <CHIP> -p <PORT> <OPERATION>
+        3. [Observe] See error/unexpected behavior
+        4. [Add more steps as needed]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Bug Severity
+      description: How severe is this bug's impact on your development workflow?
+      options:
+        - Critical - Tool completely unusable, data corruption, security issue
+        - High - Cannot flash/connect to chip, major functionality broken
+        - Medium - Minor functionality affected, workaround available
+        - Low - Cosmetic issue, minor inconvenience
+      default: 1
+    validations:
+      required: true
+
+  - type: textarea
+    id: hardware-setup
+    attributes:
+      label: Hardware Setup
+      description: Please describe your hardware configuration and connection setup
+      placeholder: |
+        - Development Board: SiFli EVK / Custom board / Yellow Mountain派
+        - Connection Type: USB-to-Serial / Direct USB / UART
+        - Serial Port: COM3 / /dev/ttyUSB0 / /dev/cu.usbserial-xxx
+        - USB-to-Serial Chip: CH340 / FTDI / CP2102 / Other
+        - Power Supply: USB powered / External 3.3V
+        - Cable Type: USB-C / Micro-USB / Dupont wires
+        - Other connected devices or debugging tools
+    validations:
+      required: true
+
+  - type: textarea
+    id: installation-details
+    attributes:
+      label: Installation/Build Details (for installation/build issues)
+      description: If this is an installation or build issue, please provide these details. Skip if not applicable.
+      placeholder: |
+        Installation Type:
+        - Downloaded prebuilt binary from GitHub releases
+        - Installed via package manager (cargo install sftool, brew, etc.)
+        - Building from source code
+        - Using sftool-lib in Rust project
+        
+        Build Environment (if building from source):
+        - Rust toolchain version: rustc 1.70.0
+        - Cargo version: cargo 1.70.0
+        - Target platform: x86_64-unknown-linux-gnu
+        - Dependencies: serialport, clap, etc. (check Cargo.lock)
+        - System Architecture: x64 / ARM64
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment-details
+    attributes:
+      label: Environment Details
+      description: Please provide system and development environment information
+      placeholder: |
+        - OS Version: Windows 11 22H2 / macOS Ventura 13.2 / Ubuntu 22.04
+        - System Architecture: x64 / ARM64
+        - Available RAM: 16GB
+        - User Permissions: Admin / Standard user
+        - USB Drivers: CH340, FTDI, CP2102 drivers installed
+        - System Language/Locale: English (US), Chinese, etc.
+        - Virtual Machine: VMware/VirtualBox (if applicable)
+        - Antivirus: Windows Defender, other (may block serial communication)
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: error-output
+    attributes:
+      label: Error Messages and Complete Output
+      description: Please paste the complete terminal output including error messages
+      placeholder: |
+        $ sftool -c SF32LB52 -p /dev/ttyUSB0 write_flash --verify app.bin@0x12020000
+        
+        [Include complete output from when you run the command]
+        Error: Connection timeout after 7 attempts
+        [Any stack traces or debug information]
+        
+        Run with --verbose or RUST_LOG=debug for more detailed output.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: verbose-output
+    attributes:
+      label: Verbose/Debug Output (if available)
+      description: If possible, run with --verbose flag or set RUST_LOG=debug and include the detailed output
+      placeholder: |
+        $ RUST_LOG=debug sftool -c SF32LB52 -p /dev/ttyUSB0 write_flash --verbose app.bin@0x12020000
+        
+        [Include debug output here - this helps identify the exact failure point]
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: attempted-solutions
+    attributes:
+      label: Attempted Solutions
+      description: What have you already tried to fix this issue?
+      placeholder: |
+        - Tried different USB port/cable
+        - Ran with --compat flag for compatibility mode
+        - Tried different serial port (COM1, COM3, /dev/ttyUSB1)
+        - Restarted the system
+        - Updated USB-to-serial drivers
+        - Tried different baud rates or connection parameters
+        - Reset the target chip manually
+        - Checked permissions (sudo, running as administrator)
+        - etc.
+
+  - type: textarea
+    id: working-configuration
+    attributes:
+      label: Working Configuration (if any)
+      description: If you have a setup that works or worked before, please describe it
+      placeholder: |
+        - Previous sftool version that worked: 0.1.8
+        - Different chip model that works: SF32LB55
+        - Different OS/system where it works
+        - Alternative tools that work: esptool.py, etc.
+        - Hardware setup changes that helped
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Information
+      description: Any other context, logs, or related information about the problem
+      placeholder: |
+        ex. This issue started after updating from v0.1.8 to v0.1.9
+        - Screenshots of error dialogs
+        - Related issues with other SiFli tools
+        - Hardware documentation references
+        - Chip datasheet sections
+        - Similar issues with comparable tools
+    validations:
+      required: false
