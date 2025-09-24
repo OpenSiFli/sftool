@@ -117,7 +117,11 @@ impl FlashWriter {
             }
         }
 
-        download_bar.finish_with_message("Download success!");
+        let end_address = file.address + file.file.metadata()?.len() as u32 - 1;
+        download_bar.finish_with_message(&format!(
+            "Downloaded successfully for 0x{:08X}..0x{:08X}",
+            file.address, end_address
+        ));
 
         // verify
         if verify {
@@ -177,7 +181,11 @@ impl FlashWriter {
             download_bar.inc(bytes_read as u64);
         }
 
-        download_bar.finish_with_message("Download success!");
+        let end_address = file.address + file.file.metadata()?.len() as u32 - 1;
+        download_bar.finish_with_message(&format!(
+            "Downloaded successfully for 0x{:08X}..0x{:08X}",
+            file.address, end_address
+        ));
 
         // verify
         if verify {
