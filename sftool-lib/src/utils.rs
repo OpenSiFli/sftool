@@ -106,13 +106,23 @@ impl Utils {
         if parts.len() == 2 {
             let addr = Self::str_to_u32(parts[1])
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-            
+
             let file_type = Self::detect_file_type(Path::new(parts[0]))?;
-            
+
             match file_type {
                 FileType::Hex => {
                     // 对于HEX文件，使用带基地址覆盖的处理函数
-                    return Self::hex_with_base_to_write_flash_files(Path::new(parts[0]), Some(addr));
+                    return Self::hex_with_base_to_write_flash_files(
+                        Path::new(parts[0]),
+                        Some(addr),
+                    );
+                }
+                FileType::Elf => {
+                    // ELF文件不支持@地址格式
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "ELF files do not support @address format",
+                    ));
                 }
                 _ => {
                     // 对于其他文件类型，使用原来的处理方式
@@ -183,8 +193,34 @@ impl Utils {
                 ihex::Record::ExtendedLinearAddress(addr) => {
                     let new_base_address = (addr as u32) << 16;
 
-                    // If base address changes, finalize current segment and start a new one
-                    if new_base_address != current_base_address && current_temp_file.is_some() {
+                    // We don't need to do anything special for ExtendedLinearAddress anymore
+                    // Just update the current_base_address for calculating absolute addresses
+                    current_base_address = new_base_address;
+                }
+                ihex::Record::Data { offset, value } => {
+                    let absolute_address = current_base_address + offset as u32;
+
+                    // Check if we need to start a new segment based on address continuity
+                    let should_start_new_segment = if let Some(ref _temp_file) = current_temp_file {
+                        let current_end_address = current_segment_start + current_file_offset;
+                        let expected_start_address = absolute_address;
+
+                        // If the new data is not continuous with existing data, start new segment
+                        // Allow for some reasonable gap (e.g., 4KB) to be filled, but beyond that start new segment
+                        let gap_size = if expected_start_address >= current_end_address {
+                            expected_start_address - current_end_address
+                        } else {
+                            // Overlapping or backwards, definitely need new segment
+                            u32::MAX
+                        };
+
+                        // If gap is too large (> 4KB), start new segment
+                        gap_size > 0x1000
+                    } else {
+                        false // No current file, will create one below
+                    };
+
+                    if should_start_new_segment {
                         // Finalize current segment
                         if let Some(temp_file) = current_temp_file.take() {
                             Self::finalize_segment(
@@ -193,13 +229,7 @@ impl Utils {
                                 &mut write_flash_files,
                             )?;
                         }
-                        current_file_offset = 0;
                     }
-
-                    current_base_address = new_base_address;
-                }
-                ihex::Record::Data { offset, value } => {
-                    let absolute_address = current_base_address + offset as u32;
 
                     // If this is the first data record or start of a new segment
                     if current_temp_file.is_none() {
@@ -277,14 +307,41 @@ impl Utils {
                 ihex::Record::ExtendedLinearAddress(addr) => {
                     let new_base_address = if let Some(override_addr) = base_address_override {
                         // 只替换高8位：(原值 & 0x00FF) | ((新地址 >> 16) & 0xFF00)
-                        let modified_addr = (addr & 0x00FF) | ((override_addr >> 16) as u16 & 0xFF00);
+                        let modified_addr =
+                            (addr & 0x00FF) | ((override_addr >> 16) as u16 & 0xFF00);
                         (modified_addr as u32) << 16
                     } else {
                         (addr as u32) << 16
                     };
 
-                    // If base address changes, finalize current segment and start a new one
-                    if new_base_address != current_base_address && current_temp_file.is_some() {
+                    // We don't need to do anything special for ExtendedLinearAddress anymore
+                    // Just update the current_base_address for calculating absolute addresses
+                    current_base_address = new_base_address;
+                }
+                ihex::Record::Data { offset, value } => {
+                    let absolute_address = current_base_address + offset as u32;
+
+                    // Check if we need to start a new segment based on address continuity
+                    let should_start_new_segment = if let Some(ref _temp_file) = current_temp_file {
+                        let current_end_address = current_segment_start + current_file_offset;
+                        let expected_start_address = absolute_address;
+
+                        // If the new data is not continuous with existing data, start new segment
+                        // Allow for some reasonable gap (e.g., 4KB) to be filled, but beyond that start new segment
+                        let gap_size = if expected_start_address >= current_end_address {
+                            expected_start_address - current_end_address
+                        } else {
+                            // Overlapping or backwards, definitely need new segment
+                            u32::MAX
+                        };
+
+                        // If gap is too large (> 4KB), start new segment
+                        gap_size > 0x1000
+                    } else {
+                        false // No current file, will create one below
+                    };
+
+                    if should_start_new_segment {
                         // Finalize current segment
                         if let Some(temp_file) = current_temp_file.take() {
                             Self::finalize_segment(
@@ -293,13 +350,7 @@ impl Utils {
                                 &mut write_flash_files,
                             )?;
                         }
-                        current_file_offset = 0;
                     }
-
-                    current_base_address = new_base_address;
-                }
-                ihex::Record::Data { offset, value } => {
-                    let absolute_address = current_base_address + offset as u32;
 
                     // If this is the first data record or start of a new segment
                     if current_temp_file.is_none() {
@@ -776,7 +827,8 @@ mod tests {
         temp_hex.write_all(hex_content.as_bytes()).unwrap();
 
         // Test with base address override
-        let result = Utils::hex_with_base_to_write_flash_files(temp_hex.path(), Some(0x10000000)).unwrap();
+        let result =
+            Utils::hex_with_base_to_write_flash_files(temp_hex.path(), Some(0x10000000)).unwrap();
 
         // Should have one segment
         assert_eq!(result.len(), 1);
@@ -788,7 +840,8 @@ mod tests {
         assert_eq!(segment.address, 0x10010000);
 
         // Test without base address override (should work like original function)
-        let result_no_override = Utils::hex_with_base_to_write_flash_files(temp_hex.path(), None).unwrap();
+        let result_no_override =
+            Utils::hex_with_base_to_write_flash_files(temp_hex.path(), None).unwrap();
         assert_eq!(result_no_override.len(), 1);
         assert_eq!(result_no_override[0].address, 0x08010000);
     }
@@ -797,7 +850,7 @@ mod tests {
     fn test_parse_file_info_hex_with_address() {
         // Create a hex file for testing
         let hex_content = ":020000040801F1\n:0400000001020304F2\n:00000001FF\n";
-        
+
         let mut temp_hex = NamedTempFile::new().unwrap();
         temp_hex.write_all(hex_content.as_bytes()).unwrap();
 
@@ -831,7 +884,12 @@ mod tests {
         let result = Utils::parse_file_info(&file_spec);
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("ELF files do not support"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("ELF files do not support")
+        );
 
         // Clean up
         std::fs::remove_file(&elf_file_path).unwrap();
@@ -840,23 +898,186 @@ mod tests {
     #[test]
     fn test_extended_linear_address_replacement_edge_cases() {
         // Test various ExtendedLinearAddress values with different override addresses
-        
+
         // Case 1: ExtendedLinearAddress(0x0000) with override 0x12000000
         // (0x0000 & 0x00FF) | ((0x12000000 >> 16) & 0xFF00) = 0x00 | 0x1200 = 0x1200
         let hex_content1 = ":020000040000FA\n:0400000001020304F2\n:00000001FF\n";
         let mut temp_hex1 = NamedTempFile::new().unwrap();
         temp_hex1.write_all(hex_content1.as_bytes()).unwrap();
-        
-        let result1 = Utils::hex_with_base_to_write_flash_files(temp_hex1.path(), Some(0x12000000)).unwrap();
+
+        let result1 =
+            Utils::hex_with_base_to_write_flash_files(temp_hex1.path(), Some(0x12000000)).unwrap();
         assert_eq!(result1[0].address, 0x12000000);
 
-        // Case 2: ExtendedLinearAddress(0x00FF) with override 0x34000000  
+        // Case 2: ExtendedLinearAddress(0x00FF) with override 0x34000000
         // (0x00FF & 0x00FF) | ((0x34000000 >> 16) & 0xFF00) = 0xFF | 0x3400 = 0x34FF
         let hex_content2 = ":0200000400FFFB\n:0400000001020304F2\n:00000001FF\n";
         let mut temp_hex2 = NamedTempFile::new().unwrap();
         temp_hex2.write_all(hex_content2.as_bytes()).unwrap();
-        
-        let result2 = Utils::hex_with_base_to_write_flash_files(temp_hex2.path(), Some(0x34FF0000)).unwrap();
+
+        let result2 =
+            Utils::hex_with_base_to_write_flash_files(temp_hex2.path(), Some(0x34FF0000)).unwrap();
         assert_eq!(result2[0].address, 0x34FF0000);
+    }
+
+    #[test]
+    fn test_hex_continuous_segments_merging() {
+        // Test that continuous segments are merged into one file
+        // Single ExtendedLinearAddress(0x0800) with continuous data
+        let hex_content =
+            ":020000040800F2\n:0400000001020304F2\n:0400040005060708DE\n:00000001FF\n";
+
+        let mut temp_hex = NamedTempFile::new().unwrap();
+        temp_hex.write_all(hex_content.as_bytes()).unwrap();
+
+        let result = Utils::hex_to_write_flash_files(temp_hex.path()).unwrap();
+
+        // Should have only one segment (merged)
+        assert_eq!(result.len(), 1);
+
+        let segment = &result[0];
+        assert_eq!(segment.address, 0x08000000);
+
+        // Should have 8 bytes total (4 + 4)
+        let file_size = segment.file.metadata().unwrap().len() as usize;
+        assert_eq!(file_size, 8);
+
+        // Read file content to verify continuous data
+        let mut file_data = Vec::new();
+        let mut file = &segment.file;
+        file.read_to_end(&mut file_data).unwrap();
+        assert_eq!(
+            &file_data,
+            &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
+        );
+    }
+
+    #[test]
+    fn test_hex_different_base_continuous_segments_merging() {
+        // Test that segments from different ExtendedLinearAddress but continuous addresses are merged
+        // First segment: ExtendedLinearAddress(0x0800) with 4 bytes at offset 0x0000 -> address 0x08000000-0x08000003
+        // Second segment: ExtendedLinearAddress(0x0800) with 4 bytes at offset 0x0004 -> address 0x08000004-0x08000007
+        let hex_content = ":020000040800F2\n:0400000001020304F2\n:020000040800F2\n:0400040005060708DE\n:00000001FF\n";
+
+        let mut temp_hex = NamedTempFile::new().unwrap();
+        temp_hex.write_all(hex_content.as_bytes()).unwrap();
+
+        let result = Utils::hex_to_write_flash_files(temp_hex.path()).unwrap();
+
+        // Should have only one segment (merged across same ExtendedLinearAddress)
+        assert_eq!(result.len(), 1);
+
+        let segment = &result[0];
+        assert_eq!(segment.address, 0x08000000);
+
+        // Should have 8 bytes total
+        let file_size = segment.file.metadata().unwrap().len() as usize;
+        assert_eq!(file_size, 8);
+
+        // Read file content to verify continuous data
+        let mut file_data = Vec::new();
+        let mut file = &segment.file;
+        file.read_to_end(&mut file_data).unwrap();
+        assert_eq!(
+            &file_data,
+            &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
+        );
+    }
+
+    #[test]
+    fn test_hex_non_continuous_segments_not_merged() {
+        // Test that non-continuous segments are NOT merged
+        // Using existing working hex content from another test
+        let hex_content =
+            ":0400000001020304F2\n:020000040001F9\n:0400000011121314B2\n:00000001FF\n";
+
+        let mut temp_hex = NamedTempFile::new().unwrap();
+        temp_hex.write_all(hex_content.as_bytes()).unwrap();
+
+        let result = Utils::hex_to_write_flash_files(temp_hex.path()).unwrap();
+
+        // Should have two separate segments (not merged due to gap)
+        assert_eq!(result.len(), 2);
+
+        // First segment
+        assert_eq!(result[0].address, 0x00000000);
+        let file_size_0 = result[0].file.metadata().unwrap().len() as usize;
+        assert_eq!(file_size_0, 4);
+
+        // Second segment
+        assert_eq!(result[1].address, 0x00010000);
+        let file_size_1 = result[1].file.metadata().unwrap().len() as usize;
+        assert_eq!(file_size_1, 4);
+    }
+
+    #[test]
+    fn test_hex_with_base_continuous_segments_merging() {
+        // Test continuous segment merging with base address override
+        // Similar to test_hex_continuous_segments_merging but with base override
+        let hex_content =
+            ":020000040801F1\n:0400000001020304F2\n:0400040005060708DE\n:00000001FF\n";
+
+        let mut temp_hex = NamedTempFile::new().unwrap();
+        temp_hex.write_all(hex_content.as_bytes()).unwrap();
+
+        // With base address override 0x10000000
+        let result =
+            Utils::hex_with_base_to_write_flash_files(temp_hex.path(), Some(0x10000000)).unwrap();
+
+        // Should have only one segment (merged)
+        assert_eq!(result.len(), 1);
+
+        let segment = &result[0];
+        // Original would be 0x08010000, with override becomes 0x10010000
+        assert_eq!(segment.address, 0x10010000);
+
+        // Should have 8 bytes total
+        let file_size = segment.file.metadata().unwrap().len() as usize;
+        assert_eq!(file_size, 8);
+
+        // Read file content to verify continuous data
+        let mut file_data = Vec::new();
+        let mut file = &segment.file;
+        file.read_to_end(&mut file_data).unwrap();
+        assert_eq!(
+            &file_data,
+            &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
+        );
+    }
+
+    #[test]
+    fn test_hex_continuous_with_gaps_still_merged() {
+        // Test that segments are merged even when there are internal gaps (filled with 0xFF)
+        // ExtendedLinearAddress(0x0800) with data at 0x0000, 0x0008, and 0x000C (small gaps)
+        let hex_content = ":020000040800F2\n:0400000001020304F2\n:0400080005060708DA\n:04000C000A0B0C0DC2\n:00000001FF\n";
+
+        let mut temp_hex = NamedTempFile::new().unwrap();
+        temp_hex.write_all(hex_content.as_bytes()).unwrap();
+
+        let result = Utils::hex_to_write_flash_files(temp_hex.path()).unwrap();
+
+        // Should have only one segment (all continuous with small gaps)
+        assert_eq!(result.len(), 1);
+
+        let segment = &result[0];
+        assert_eq!(segment.address, 0x08000000);
+
+        // Should have data from 0x0000 to 0x000F (16 bytes total)
+        let file_size = segment.file.metadata().unwrap().len() as usize;
+        assert_eq!(file_size, 16);
+
+        // Read file content to verify data and gap filling
+        let mut file_data = Vec::new();
+        let mut file = &segment.file;
+        file.read_to_end(&mut file_data).unwrap();
+
+        // First 4 bytes
+        assert_eq!(&file_data[0..4], &[0x01, 0x02, 0x03, 0x04]);
+        // Gap from 0x04 to 0x07 should be filled with 0xFF
+        assert!(file_data[4..8].iter().all(|&b| b == 0xFF));
+        // Data at 0x08-0x0B
+        assert_eq!(&file_data[8..12], &[0x05, 0x06, 0x07, 0x08]);
+        // Data at 0x0C-0x0F
+        assert_eq!(&file_data[12..16], &[0x0A, 0x0B, 0x0C, 0x0D]);
     }
 }
