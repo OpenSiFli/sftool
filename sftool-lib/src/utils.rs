@@ -102,18 +102,30 @@ impl Utils {
     pub fn parse_file_info(file_str: &str) -> Result<Vec<WriteFlashFile>, std::io::Error> {
         // file@address
         let parts: Vec<_> = file_str.split('@').collect();
-        // 如果存在@符号，则证明是bin文件
+        // 如果存在@符号，需要先检查文件类型
         if parts.len() == 2 {
             let addr = Self::str_to_u32(parts[1])
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-            let file = std::fs::File::open(parts[0])?;
-            let crc32 = Self::get_file_crc32(&file)?;
+            
+            let file_type = Self::detect_file_type(Path::new(parts[0]))?;
+            
+            match file_type {
+                FileType::Hex => {
+                    // 对于HEX文件，使用带基地址覆盖的处理函数
+                    return Self::hex_with_base_to_write_flash_files(Path::new(parts[0]), Some(addr));
+                }
+                _ => {
+                    // 对于其他文件类型，使用原来的处理方式
+                    let file = std::fs::File::open(parts[0])?;
+                    let crc32 = Self::get_file_crc32(&file)?;
 
-            return Ok(vec![WriteFlashFile {
-                address: addr,
-                file,
-                crc32,
-            }]);
+                    return Ok(vec![WriteFlashFile {
+                        address: addr,
+                        file,
+                        crc32,
+                    }]);
+                }
+            }
         }
 
         let file_type = Self::detect_file_type(Path::new(parts[0]))?;
@@ -170,6 +182,106 @@ impl Utils {
             match ihex_record {
                 ihex::Record::ExtendedLinearAddress(addr) => {
                     let new_base_address = (addr as u32) << 16;
+
+                    // If base address changes, finalize current segment and start a new one
+                    if new_base_address != current_base_address && current_temp_file.is_some() {
+                        // Finalize current segment
+                        if let Some(temp_file) = current_temp_file.take() {
+                            Self::finalize_segment(
+                                temp_file,
+                                current_segment_start,
+                                &mut write_flash_files,
+                            )?;
+                        }
+                        current_file_offset = 0;
+                    }
+
+                    current_base_address = new_base_address;
+                }
+                ihex::Record::Data { offset, value } => {
+                    let absolute_address = current_base_address + offset as u32;
+
+                    // If this is the first data record or start of a new segment
+                    if current_temp_file.is_none() {
+                        current_temp_file = Some(tempfile()?);
+                        current_segment_start = absolute_address;
+                        current_file_offset = 0;
+                    }
+
+                    if let Some(ref mut temp_file) = current_temp_file {
+                        let expected_file_offset = absolute_address - current_segment_start;
+
+                        // Fill gaps with 0xFF if they exist
+                        if expected_file_offset > current_file_offset {
+                            let gap_size = expected_file_offset - current_file_offset;
+                            let fill_data = vec![0xFF; gap_size as usize];
+                            temp_file.write_all(&fill_data)?;
+                            current_file_offset = expected_file_offset;
+                        }
+
+                        // Write data
+                        temp_file.write_all(&value)?;
+                        current_file_offset += value.len() as u32;
+                    }
+                }
+                ihex::Record::EndOfFile => {
+                    // Finalize the last segment
+                    if let Some(temp_file) = current_temp_file.take() {
+                        Self::finalize_segment(
+                            temp_file,
+                            current_segment_start,
+                            &mut write_flash_files,
+                        )?;
+                    }
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        // If file ends without encountering EndOfFile record, finalize current segment
+        if let Some(temp_file) = current_temp_file.take() {
+            Self::finalize_segment(temp_file, current_segment_start, &mut write_flash_files)?;
+        }
+
+        Ok(write_flash_files)
+    }
+
+    /// 将HEX文件转换为WriteFlashFile，支持基地址覆盖
+    /// base_address_override: 如果提供，将用其高8位替换ExtendedLinearAddress中的高8位
+    pub fn hex_with_base_to_write_flash_files(
+        hex_file: &Path,
+        base_address_override: Option<u32>,
+    ) -> Result<Vec<WriteFlashFile>, std::io::Error> {
+        let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
+
+        let file = std::fs::File::open(hex_file)?;
+        let reader = std::io::BufReader::new(file);
+
+        let mut current_base_address = 0u32;
+        let mut current_temp_file: Option<File> = None;
+        let mut current_segment_start = 0u32;
+        let mut current_file_offset = 0u32;
+
+        for line in reader.lines() {
+            let line = line?;
+            let line = line.trim_end_matches('\r');
+            if line.is_empty() {
+                continue;
+            }
+
+            let ihex_record = ihex::Record::from_record_string(&line)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+
+            match ihex_record {
+                ihex::Record::ExtendedLinearAddress(addr) => {
+                    let new_base_address = if let Some(override_addr) = base_address_override {
+                        // 只替换高8位：(原值 & 0x00FF) | ((新地址 >> 16) & 0xFF00)
+                        let modified_addr = (addr & 0x00FF) | ((override_addr >> 16) as u16 & 0xFF00);
+                        (modified_addr as u32) << 16
+                    } else {
+                        (addr as u32) << 16
+                    };
 
                     // If base address changes, finalize current segment and start a new one
                     if new_base_address != current_base_address && current_temp_file.is_some() {
@@ -652,5 +764,99 @@ mod tests {
         assert!(Utils::parse_erase_region("invalid_format").is_err());
         assert!(Utils::parse_erase_region("0x1000").is_err()); // missing size
         assert!(Utils::parse_erase_region("invalid:0x100").is_err()); // invalid address
+    }
+
+    #[test]
+    fn test_hex_with_base_to_write_flash_files() {
+        // Create a hex file with ExtendedLinearAddress that should be modified
+        // ExtendedLinearAddress(0x0801) -> should become 0x1001 when base_address_override = 0x10000000
+        let hex_content = ":020000040801F1\n:0400000001020304F2\n:00000001FF\n";
+
+        let mut temp_hex = NamedTempFile::new().unwrap();
+        temp_hex.write_all(hex_content.as_bytes()).unwrap();
+
+        // Test with base address override
+        let result = Utils::hex_with_base_to_write_flash_files(temp_hex.path(), Some(0x10000000)).unwrap();
+
+        // Should have one segment
+        assert_eq!(result.len(), 1);
+
+        let segment = &result[0];
+        // Original ExtendedLinearAddress was 0x0801 (base address 0x08010000)
+        // With override 0x10000000, should become 0x1001 (base address 0x10010000)
+        // (0x0801 & 0x00FF) | ((0x10000000 >> 16) & 0xFF00) = 0x01 | 0x1000 = 0x1001
+        assert_eq!(segment.address, 0x10010000);
+
+        // Test without base address override (should work like original function)
+        let result_no_override = Utils::hex_with_base_to_write_flash_files(temp_hex.path(), None).unwrap();
+        assert_eq!(result_no_override.len(), 1);
+        assert_eq!(result_no_override[0].address, 0x08010000);
+    }
+
+    #[test]
+    fn test_parse_file_info_hex_with_address() {
+        // Create a hex file for testing
+        let hex_content = ":020000040801F1\n:0400000001020304F2\n:00000001FF\n";
+        
+        let mut temp_hex = NamedTempFile::new().unwrap();
+        temp_hex.write_all(hex_content.as_bytes()).unwrap();
+
+        // Create a file with .hex extension for proper type detection
+        let hex_file_path = temp_hex.path().with_extension("hex");
+        std::fs::copy(temp_hex.path(), &hex_file_path).unwrap();
+
+        // Test parsing HEX file with @address format
+        let file_spec = format!("{}@0x10000000", hex_file_path.display());
+        let result = Utils::parse_file_info(&file_spec).unwrap();
+
+        // Should have one segment with modified address
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].address, 0x10010000);
+
+        // Clean up
+        std::fs::remove_file(&hex_file_path).unwrap();
+    }
+
+    #[test]
+    fn test_parse_file_info_elf_with_address_error() {
+        // Create a temporary ELF-like file (just with ELF magic)
+        let mut temp_elf = NamedTempFile::new().unwrap();
+        temp_elf.write_all(&[0x7F, 0x45, 0x4C, 0x46]).unwrap(); // ELF magic
+
+        let elf_file_path = temp_elf.path().with_extension("elf");
+        std::fs::copy(temp_elf.path(), &elf_file_path).unwrap();
+
+        // Test that ELF files with @address format return an error
+        let file_spec = format!("{}@0x10000000", elf_file_path.display());
+        let result = Utils::parse_file_info(&file_spec);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("ELF files do not support"));
+
+        // Clean up
+        std::fs::remove_file(&elf_file_path).unwrap();
+    }
+
+    #[test]
+    fn test_extended_linear_address_replacement_edge_cases() {
+        // Test various ExtendedLinearAddress values with different override addresses
+        
+        // Case 1: ExtendedLinearAddress(0x0000) with override 0x12000000
+        // (0x0000 & 0x00FF) | ((0x12000000 >> 16) & 0xFF00) = 0x00 | 0x1200 = 0x1200
+        let hex_content1 = ":020000040000FA\n:0400000001020304F2\n:00000001FF\n";
+        let mut temp_hex1 = NamedTempFile::new().unwrap();
+        temp_hex1.write_all(hex_content1.as_bytes()).unwrap();
+        
+        let result1 = Utils::hex_with_base_to_write_flash_files(temp_hex1.path(), Some(0x12000000)).unwrap();
+        assert_eq!(result1[0].address, 0x12000000);
+
+        // Case 2: ExtendedLinearAddress(0x00FF) with override 0x34000000  
+        // (0x00FF & 0x00FF) | ((0x34000000 >> 16) & 0xFF00) = 0xFF | 0x3400 = 0x34FF
+        let hex_content2 = ":0200000400FFFB\n:0400000001020304F2\n:00000001FF\n";
+        let mut temp_hex2 = NamedTempFile::new().unwrap();
+        temp_hex2.write_all(hex_content2.as_bytes()).unwrap();
+        
+        let result2 = Utils::hex_with_base_to_write_flash_files(temp_hex2.path(), Some(0x34FF0000)).unwrap();
+        assert_eq!(result2[0].address, 0x34FF0000);
     }
 }
