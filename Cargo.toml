@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.1.13"
+version = "0.1.14"
 edition = "2024"
 license = "Apache-2.0"
 description = "SiFli SoC serial utility"
