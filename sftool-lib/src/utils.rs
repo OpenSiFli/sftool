@@ -12,6 +12,7 @@ pub enum FileType {
     Bin,
     Hex,
     Elf,
+    Unknown,
 }
 
 pub const ELF_MAGIC: &[u8] = &[0x7F, 0x45, 0x4C, 0x46]; // ELF file magic number
@@ -92,10 +93,8 @@ impl Utils {
             return Ok(FileType::Elf);
         }
 
-        Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Unrecognized file type",
-        ))
+        // 如果MAGIC也无法识别，返回Unknown
+        Ok(FileType::Unknown)
     }
 
     /// 解析文件信息，支持file@address格式
@@ -143,7 +142,7 @@ impl Utils {
         match file_type {
             FileType::Hex => Self::hex_to_write_flash_files(Path::new(parts[0])),
             FileType::Elf => Self::elf_to_write_flash_files(Path::new(parts[0])),
-            FileType::Bin => Err(std::io::Error::new(
+            _ => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "For binary files, please use the <file@address> format",
             )),
