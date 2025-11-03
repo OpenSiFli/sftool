@@ -1,10 +1,10 @@
 use super::SF32LB58Tool;
-use crate::WriteFlashParams;
 use crate::common::write_flash::FlashWriter;
 use crate::write_flash::WriteFlashTrait;
+use crate::{Result, WriteFlashParams};
 
 impl WriteFlashTrait for SF32LB58Tool {
-    fn write_flash(&mut self, params: &WriteFlashParams) -> Result<(), std::io::Error> {
+    fn write_flash(&mut self, params: &WriteFlashParams) -> Result<()> {
         let packet_size = if self.base.compat { 256 } else { 128 * 1024 };
 
         if params.erase_all {

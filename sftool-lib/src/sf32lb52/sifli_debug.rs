@@ -1,4 +1,5 @@
 use super::SF32LB52Tool;
+use crate::Result;
 use crate::common::sifli_debug::{
     ChipFrameFormat, RecvError, START_WORD, SifliUartCommand, SifliUartResponse, common_debug,
 };
@@ -23,7 +24,7 @@ impl ChipFrameFormat for SF32LB52FrameFormat {
 
     fn parse_frame_header(
         reader: &mut BufReader<Box<dyn Read + Send>>,
-    ) -> Result<usize, RecvError> {
+    ) -> std::result::Result<usize, RecvError> {
         // 读取长度 (2字节) - SF32LB52 uses little-endian
         let mut length_bytes = [0; 2];
         if let Err(e) = reader.read_exact(&mut length_bytes) {
@@ -87,40 +88,37 @@ impl ChipFrameFormat for SF32LB52FrameFormat {
 }
 
 impl crate::common::sifli_debug::SifliDebug for SF32LB52Tool {
-    fn debug_command(
-        &mut self,
-        command: SifliUartCommand,
-    ) -> Result<SifliUartResponse, std::io::Error> {
+    fn debug_command(&mut self, command: SifliUartCommand) -> Result<SifliUartResponse> {
         common_debug::debug_command_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self, command)
     }
 
-    fn debug_read_word32(&mut self, addr: u32) -> Result<u32, std::io::Error> {
+    fn debug_read_word32(&mut self, addr: u32) -> Result<u32> {
         common_debug::debug_read_word32_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self, addr)
     }
 
-    fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<(), std::io::Error> {
+    fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<()> {
         common_debug::debug_write_word32_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self, addr, data)
     }
 
-    fn debug_write_memory(&mut self, addr: u32, data: &[u8]) -> Result<(), std::io::Error> {
+    fn debug_write_memory(&mut self, addr: u32, data: &[u8]) -> Result<()> {
         common_debug::debug_write_memory_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self, addr, data)
     }
 
-    fn debug_write_core_reg(&mut self, reg: u16, data: u32) -> Result<(), std::io::Error> {
+    fn debug_write_core_reg(&mut self, reg: u16, data: u32) -> Result<()> {
         common_debug::debug_write_core_reg_impl::<SF32LB52Tool, SF32LB52FrameFormat>(
             self, reg, data,
         )
     }
 
-    fn debug_step(&mut self) -> Result<(), std::io::Error> {
+    fn debug_step(&mut self) -> Result<()> {
         common_debug::debug_step_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self)
     }
 
-    fn debug_run(&mut self) -> Result<(), std::io::Error> {
+    fn debug_run(&mut self) -> Result<()> {
         common_debug::debug_run_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self)
     }
 
-    fn debug_halt(&mut self) -> Result<(), std::io::Error> {
+    fn debug_halt(&mut self) -> Result<()> {
         common_debug::debug_halt_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self)
     }
 }

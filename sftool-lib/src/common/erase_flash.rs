@@ -1,13 +1,13 @@
-use crate::SifliToolTrait;
 use crate::common::ram_command::{Command, RamCommand};
 use crate::utils::Utils;
+use crate::{Error, Result, SifliToolTrait};
 
 /// 通用的Flash擦除操作实现
 pub struct EraseOps;
 
 impl EraseOps {
     /// 擦除整个Flash的通用实现
-    pub fn erase_all<T>(tool: &mut T, address: u32) -> Result<(), std::io::Error>
+    pub fn erase_all<T>(tool: &mut T, address: u32) -> Result<()>
     where
         T: SifliToolTrait + RamCommand,
     {
@@ -25,10 +25,10 @@ impl EraseOps {
         loop {
             let elapsed = now.elapsed().unwrap().as_millis();
             if elapsed > 30000 {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Erase timeout",
-                ));
+                return Err(Error::timeout(format!(
+                    "erasing flash at 0x{:08X}",
+                    address
+                )));
             }
 
             let mut byte = [0];
@@ -49,7 +49,7 @@ impl EraseOps {
     }
 
     /// 擦除指定区域的通用实现
-    pub fn erase_region<T>(tool: &mut T, address: u32, len: u32) -> Result<(), std::io::Error>
+    pub fn erase_region<T>(tool: &mut T, address: u32, len: u32) -> Result<()>
     where
         T: SifliToolTrait + RamCommand,
     {
@@ -69,10 +69,11 @@ impl EraseOps {
         loop {
             let elapsed = now.elapsed().unwrap().as_millis();
             if elapsed > 30000 {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Erase timeout",
-                ));
+                return Err(Error::timeout(format!(
+                    "erasing region 0x{:08X}..0x{:08X}",
+                    address,
+                    address + len.saturating_sub(1)
+                )));
             }
 
             let mut byte = [0];
@@ -97,27 +98,24 @@ impl EraseOps {
     }
 
     /// 解析擦除地址参数
-    pub fn parse_address(address_str: &str) -> Result<u32, std::io::Error> {
+    pub fn parse_address(address_str: &str) -> Result<u32> {
         Utils::str_to_u32(address_str)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
+            .map_err(|e| Error::invalid_input(format!("Invalid address '{}': {}", address_str, e)))
     }
 
     /// 解析区域参数 (address:size格式)
-    pub fn parse_region(region_spec: &str) -> Result<(u32, u32), std::io::Error> {
+    pub fn parse_region(region_spec: &str) -> Result<(u32, u32)> {
         let Some((addr_str, size_str)) = region_spec.split_once(':') else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!(
-                    "Invalid region format: {}. Expected: address:size",
-                    region_spec
-                ),
-            ));
+            return Err(Error::invalid_input(format!(
+                "Invalid region format: {}. Expected: address:size",
+                region_spec
+            )));
         };
 
         let address = Utils::str_to_u32(addr_str)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+            .map_err(|e| Error::invalid_input(format!("Invalid address '{}': {}", addr_str, e)))?;
         let len = Utils::str_to_u32(size_str)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+            .map_err(|e| Error::invalid_input(format!("Invalid size '{}': {}", size_str, e)))?;
 
         Ok((address, len))
     }

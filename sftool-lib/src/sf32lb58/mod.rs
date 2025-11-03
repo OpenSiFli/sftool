@@ -8,7 +8,7 @@ pub mod speed;
 pub mod write_flash;
 
 use crate::sf32lb58::ram_command::DownloadStub;
-use crate::{SifliTool, SifliToolBase, SifliToolTrait};
+use crate::{Result, SifliTool, SifliToolBase, SifliToolTrait};
 use serialport::SerialPort;
 use std::io::Write;
 use std::time::Duration;
@@ -46,11 +46,7 @@ impl SF32LB58Tool {
     const CHUNK_OVERHEAD: usize = 32 + 4;
 
     /// 发送DFU命令的通用方法
-    fn send_dfu_command(
-        &mut self,
-        data_len: usize,
-        delay_ms: Option<u64>,
-    ) -> Result<(), std::io::Error> {
+    fn send_dfu_command(&mut self, data_len: usize, delay_ms: Option<u64>) -> Result<()> {
         let cmd = format!("dfu_recv {}\r", data_len);
         tracing::trace!("Sending DFU command: {}", cmd.trim());
 
@@ -65,12 +61,7 @@ impl SF32LB58Tool {
     }
 
     /// 发送DFU数据的通用方法
-    fn send_dfu_data(
-        &mut self,
-        header: &[u8],
-        data: &[u8],
-        delay_ms: Option<u64>,
-    ) -> Result<(), std::io::Error> {
+    fn send_dfu_data(&mut self, header: &[u8], data: &[u8], delay_ms: Option<u64>) -> Result<()> {
         tracing::trace!(
             "Sending DFU data: header={:?}, data_len={}",
             header,
@@ -88,7 +79,7 @@ impl SF32LB58Tool {
         Ok(())
     }
 
-    fn download_stub_impl(&mut self) -> Result<(), std::io::Error> {
+    fn download_stub_impl(&mut self) -> Result<()> {
         use crate::ram_stub::{self, CHIP_FILE_NAME, SIG_PUB_FILE};
 
         tracing::info!("Starting SF32LB58 stub download process");
@@ -148,7 +139,7 @@ impl SF32LB58Tool {
     }
 
     /// 下载引导补丁签名密钥
-    fn download_boot_patch_sigkey(&mut self, sig_data: &[u8]) -> Result<(), std::io::Error> {
+    fn download_boot_patch_sigkey(&mut self, sig_data: &[u8]) -> Result<()> {
         tracing::info!(
             "Starting boot patch signature key download, size: {} bytes",
             sig_data.len()
@@ -171,7 +162,7 @@ impl SF32LB58Tool {
     }
 
     /// 下载镜像文件
-    fn download_image(&mut self, data: &[u8], flash_id: u8) -> Result<(), std::io::Error> {
+    fn download_image(&mut self, data: &[u8], flash_id: u8) -> Result<()> {
         tracing::info!(
             "Starting image download: flash_id={}, size={} bytes",
             flash_id,
@@ -192,7 +183,7 @@ impl SF32LB58Tool {
     }
 
     /// 下载镜像头部
-    fn download_image_header(&mut self, data: &[u8], flash_id: u8) -> Result<(), std::io::Error> {
+    fn download_image_header(&mut self, data: &[u8], flash_id: u8) -> Result<()> {
         tracing::debug!("Downloading image header...");
 
         let header = [DfuCommandType::ImageHeader as u8, flash_id];
@@ -209,7 +200,7 @@ impl SF32LB58Tool {
     }
 
     /// 下载镜像主体
-    fn download_image_body(&mut self, data: &[u8], flash_id: u8) -> Result<(), std::io::Error> {
+    fn download_image_body(&mut self, data: &[u8], flash_id: u8) -> Result<()> {
         tracing::debug!("Downloading image body...");
 
         let body_header = [DfuCommandType::ImageBody as u8, flash_id];
@@ -243,7 +234,7 @@ impl SF32LB58Tool {
     }
 
     /// 下载镜像结束标志
-    fn download_image_end(&mut self, flash_id: u8) -> Result<(), std::io::Error> {
+    fn download_image_end(&mut self, flash_id: u8) -> Result<()> {
         tracing::debug!("Sending image end marker...");
 
         let end_header = [DfuCommandType::End as u8, flash_id];
@@ -259,7 +250,7 @@ impl SF32LB58Tool {
     }
 
     /// 等待OK响应
-    fn wait_for_ok_response(&mut self, timeout_ms: u64) -> Result<(), std::io::Error> {
+    fn wait_for_ok_response(&mut self, timeout_ms: u64) -> Result<()> {
         use std::io::Read;
 
         let mut buffer = Vec::new();
@@ -280,7 +271,8 @@ impl SF32LB58Tool {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
                     format!("Timeout waiting for OK response: {}", response_str),
-                ));
+                )
+                .into());
             }
 
             // 每秒记录一次等待状态
@@ -319,7 +311,8 @@ impl SF32LB58Tool {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         format!("Received Fail response: {}", response_str),
-                    ));
+                    )
+                    .into());
                 }
 
                 // 限制缓冲区大小，避免内存占用过多
@@ -361,11 +354,11 @@ impl SifliToolTrait for SF32LB58Tool {
         &self.base
     }
 
-    fn set_speed(&mut self, _baud: u32) -> Result<(), std::io::Error> {
+    fn set_speed(&mut self, _baud: u32) -> Result<()> {
         todo!("SF32LB58Tool::set_speed not implemented yet")
     }
 
-    fn soft_reset(&mut self) -> Result<(), std::io::Error> {
+    fn soft_reset(&mut self) -> Result<()> {
         use crate::reset::Reset;
         Reset::soft_reset(self)
     }

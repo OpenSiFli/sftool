@@ -1,5 +1,5 @@
-use crate::ReadFlashParams;
+use crate::{ReadFlashParams, Result};
 
 pub trait ReadFlashTrait {
-    fn read_flash(&mut self, params: &ReadFlashParams) -> Result<(), std::io::Error>;
+    fn read_flash(&mut self, params: &ReadFlashParams) -> Result<()>;
 }

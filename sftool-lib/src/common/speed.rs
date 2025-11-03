@@ -1,5 +1,5 @@
-use crate::SifliToolTrait;
 use crate::common::ram_command::{Command, RamCommand};
+use crate::{Result, SifliToolTrait};
 use std::io::Write;
 use std::time::Duration;
 
@@ -8,7 +8,7 @@ pub struct SpeedOps;
 
 impl SpeedOps {
     /// 设置串口速度的通用实现
-    pub fn set_speed<T>(tool: &mut T, speed: u32) -> Result<(), std::io::Error>
+    pub fn set_speed<T>(tool: &mut T, speed: u32) -> Result<()>
     where
         T: SifliToolTrait + RamCommand,
     {

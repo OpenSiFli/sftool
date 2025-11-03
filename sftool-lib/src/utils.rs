@@ -1,9 +1,8 @@
-use crate::WriteFlashFile;
+use crate::{Error, Result, WriteFlashFile};
 use crc::Algorithm;
 use memmap2::Mmap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
-use std::num::ParseIntError;
 use std::path::Path;
 use tempfile::tempfile;
 
@@ -19,7 +18,7 @@ pub const ELF_MAGIC: &[u8] = &[0x7F, 0x45, 0x4C, 0x46]; // ELF file magic number
 
 pub struct Utils;
 impl Utils {
-    pub fn str_to_u32(s: &str) -> Result<u32, ParseIntError> {
+    pub fn str_to_u32(s: &str) -> Result<u32> {
         let s = s.trim();
 
         let (num_str, multiplier) = match s.chars().last() {
@@ -42,7 +41,7 @@ impl Utils {
         Ok(unsigned * multiplier)
     }
 
-    pub(crate) fn get_file_crc32(file: &File) -> Result<u32, std::io::Error> {
+    pub(crate) fn get_file_crc32(file: &File) -> Result<u32> {
         const CRC_32_ALGO: Algorithm<u32> = Algorithm {
             width: 32,
             poly: 0x04C11DB7,
@@ -74,7 +73,7 @@ impl Utils {
     }
 
     /// 文件类型检测
-    pub fn detect_file_type(path: &Path) -> Result<FileType, std::io::Error> {
+    pub fn detect_file_type(path: &Path) -> Result<FileType> {
         if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
             match ext.to_lowercase().as_str() {
                 "bin" => return Ok(FileType::Bin),
@@ -98,13 +97,12 @@ impl Utils {
     }
 
     /// 解析文件信息，支持file@address格式
-    pub fn parse_file_info(file_str: &str) -> Result<Vec<WriteFlashFile>, std::io::Error> {
+    pub fn parse_file_info(file_str: &str) -> Result<Vec<WriteFlashFile>> {
         // file@address
         let parts: Vec<_> = file_str.split('@').collect();
         // 如果存在@符号，需要先检查文件类型
         if parts.len() == 2 {
-            let addr = Self::str_to_u32(parts[1])
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+            let addr = Self::str_to_u32(parts[1])?;
 
             let file_type = Self::detect_file_type(Path::new(parts[0]))?;
 
@@ -118,8 +116,7 @@ impl Utils {
                 }
                 FileType::Elf => {
                     // ELF文件不支持@地址格式
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
+                    return Err(Error::invalid_input(
                         "ELF files do not support @address format",
                     ));
                 }
@@ -142,8 +139,7 @@ impl Utils {
         match file_type {
             FileType::Hex => Self::hex_to_write_flash_files(Path::new(parts[0])),
             FileType::Elf => Self::elf_to_write_flash_files(Path::new(parts[0])),
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
+            _ => Err(Error::invalid_input(
                 "For binary files, please use the <file@address> format",
             )),
         }
@@ -165,9 +161,7 @@ impl Utils {
     }
 
     /// 将HEX文件转换为WriteFlashFile
-    pub fn hex_to_write_flash_files(
-        hex_file: &Path,
-    ) -> Result<Vec<WriteFlashFile>, std::io::Error> {
+    pub fn hex_to_write_flash_files(hex_file: &Path) -> Result<Vec<WriteFlashFile>> {
         let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
 
         let file = std::fs::File::open(hex_file)?;
@@ -185,8 +179,7 @@ impl Utils {
                 continue;
             }
 
-            let ihex_record = ihex::Record::from_record_string(&line)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+            let ihex_record = ihex::Record::from_record_string(&line)?;
 
             match ihex_record {
                 ihex::Record::ExtendedLinearAddress(addr) => {
@@ -281,7 +274,7 @@ impl Utils {
     pub fn hex_with_base_to_write_flash_files(
         hex_file: &Path,
         base_address_override: Option<u32>,
-    ) -> Result<Vec<WriteFlashFile>, std::io::Error> {
+    ) -> Result<Vec<WriteFlashFile>> {
         let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
 
         let file = std::fs::File::open(hex_file)?;
@@ -299,8 +292,7 @@ impl Utils {
                 continue;
             }
 
-            let ihex_record = ihex::Record::from_record_string(&line)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+            let ihex_record = ihex::Record::from_record_string(&line)?;
 
             match ihex_record {
                 ihex::Record::ExtendedLinearAddress(addr) => {
@@ -398,17 +390,14 @@ impl Utils {
     }
 
     /// 将ELF文件转换为WriteFlashFile  
-    pub fn elf_to_write_flash_files(
-        elf_file: &Path,
-    ) -> Result<Vec<WriteFlashFile>, std::io::Error> {
+    pub fn elf_to_write_flash_files(elf_file: &Path) -> Result<Vec<WriteFlashFile>> {
         let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
         const SECTOR_SIZE: u32 = 0x1000; // 扇区大小
         const FILL_BYTE: u8 = 0xFF; // 填充字节
 
         let file = File::open(elf_file)?;
         let mmap = unsafe { Mmap::map(&file)? };
-        let elf = goblin::elf::Elf::parse(&mmap[..])
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        let elf = goblin::elf::Elf::parse(&mmap[..])?;
 
         // 收集所有需要烧录的段
         let mut load_segments: Vec<_> = elf
@@ -484,7 +473,7 @@ impl Utils {
         mut temp_file: File,
         address: u32,
         write_flash_files: &mut Vec<WriteFlashFile>,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<()> {
         temp_file.seek(std::io::SeekFrom::Start(0))?;
         let crc32 = Self::get_file_crc32(&temp_file)?;
         write_flash_files.push(WriteFlashFile {
@@ -496,40 +485,27 @@ impl Utils {
     }
 
     /// 解析读取文件信息 (filename@address:size格式)
-    pub fn parse_read_file_info(file_spec: &str) -> Result<crate::ReadFlashFile, std::io::Error> {
+    pub fn parse_read_file_info(file_spec: &str) -> Result<crate::ReadFlashFile> {
         let Some((file_path, addr_size)) = file_spec.split_once('@') else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!(
-                    "Invalid format: {}. Expected: filename@address:size",
-                    file_spec
-                ),
-            ));
+            return Err(Error::invalid_input(format!(
+                "Invalid format: {}. Expected: filename@address:size",
+                file_spec
+            )));
         };
 
         let Some((address_str, size_str)) = addr_size.split_once(':') else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!(
-                    "Invalid address:size format: {}. Expected: address:size",
-                    addr_size
-                ),
-            ));
+            return Err(Error::invalid_input(format!(
+                "Invalid address:size format: {}. Expected: address:size",
+                addr_size
+            )));
         };
 
         let address = Self::str_to_u32(address_str).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("Invalid address '{}': {}", address_str, e),
-            )
+            Error::invalid_input(format!("Invalid address '{}': {}", address_str, e))
         })?;
 
-        let size = Self::str_to_u32(size_str).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("Invalid size '{}': {}", size_str, e),
-            )
-        })?;
+        let size = Self::str_to_u32(size_str)
+            .map_err(|e| Error::invalid_input(format!("Invalid size '{}': {}", size_str, e)))?;
 
         Ok(crate::ReadFlashFile {
             file_path: file_path.to_string(),
@@ -539,40 +515,26 @@ impl Utils {
     }
 
     /// 解析擦除地址
-    pub fn parse_erase_address(address_str: &str) -> Result<u32, std::io::Error> {
-        Self::str_to_u32(address_str).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("Invalid address '{}': {}", address_str, e),
-            )
-        })
+    pub fn parse_erase_address(address_str: &str) -> Result<u32> {
+        Self::str_to_u32(address_str)
+            .map_err(|e| Error::invalid_input(format!("Invalid address '{}': {}", address_str, e)))
     }
 
     /// 解析擦除区域信息 (address:size格式)
-    pub fn parse_erase_region(region_spec: &str) -> Result<crate::EraseRegionFile, std::io::Error> {
+    pub fn parse_erase_region(region_spec: &str) -> Result<crate::EraseRegionFile> {
         let Some((address_str, size_str)) = region_spec.split_once(':') else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!(
-                    "Invalid region format: {}. Expected: address:size",
-                    region_spec
-                ),
-            ));
+            return Err(Error::invalid_input(format!(
+                "Invalid region format: {}. Expected: address:size",
+                region_spec
+            )));
         };
 
         let address = Self::str_to_u32(address_str).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("Invalid address '{}': {}", address_str, e),
-            )
+            Error::invalid_input(format!("Invalid address '{}': {}", address_str, e))
         })?;
 
-        let size = Self::str_to_u32(size_str).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("Invalid size '{}': {}", size_str, e),
-            )
-        })?;
+        let size = Self::str_to_u32(size_str)
+            .map_err(|e| Error::invalid_input(format!("Invalid size '{}': {}", size_str, e)))?;
 
         Ok(crate::EraseRegionFile { address, size })
     }

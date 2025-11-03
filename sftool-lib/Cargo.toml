@@ -29,3 +29,4 @@ indicatif = "0.17.11"
 clap = { version = "4.2.1", features = ["derive"], optional = true }
 probe-rs = { version = "0.27.0"}
 bitfield = "0.19.0"
+thiserror = "1.0"

@@ -1873,6 +1873,7 @@ dependencies = [
 name = "sftool"
 version = "0.1.14"
 dependencies = [
+ "anyhow",
  "clap",
  "indicatif",
  "serde",
@@ -1900,6 +1901,7 @@ dependencies = [
  "serialport",
  "strum 0.27.1",
  "tempfile",
+ "thiserror 1.0.69",
  "tracing",
 ]
 

@@ -10,7 +10,7 @@ pub mod write_flash;
 
 use crate::common::sifli_debug::SifliDebug;
 use crate::sf32lb52::ram_command::DownloadStub;
-use crate::{SifliTool, SifliToolBase, SifliToolTrait};
+use crate::{Result, SifliTool, SifliToolBase, SifliToolTrait};
 use serialport::SerialPort;
 use std::time::Duration;
 
@@ -26,7 +26,7 @@ unsafe impl Sync for SF32LB52Tool {}
 
 impl SF32LB52Tool {
     /// 执行全部flash擦除的内部方法
-    pub fn internal_erase_all(&mut self, address: u32) -> Result<(), std::io::Error> {
+    pub fn internal_erase_all(&mut self, address: u32) -> Result<()> {
         use ram_command::{Command, RamCommand};
 
         let progress = self.progress();
@@ -45,10 +45,9 @@ impl SF32LB52Tool {
             if elapsed > 30000 {
                 // 擦除可能需要更长时间
                 tracing::error!("response string is {}", String::from_utf8_lossy(&buffer));
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Erase timeout",
-                ));
+                return Err(
+                    std::io::Error::new(std::io::ErrorKind::TimedOut, "Erase timeout").into(),
+                );
             }
 
             let mut byte = [0];
@@ -70,7 +69,7 @@ impl SF32LB52Tool {
     }
 
     /// 执行区域擦除的内部方法
-    pub fn internal_erase_region(&mut self, address: u32, len: u32) -> Result<(), std::io::Error> {
+    pub fn internal_erase_region(&mut self, address: u32, len: u32) -> Result<()> {
         use ram_command::{Command, RamCommand};
 
         let progress = self.progress();
@@ -97,10 +96,9 @@ impl SF32LB52Tool {
             if elapsed > timeout_ms {
                 // 擦除可能需要更长时间
                 tracing::error!("response string is {}", String::from_utf8_lossy(&buffer));
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Erase timeout",
-                ));
+                return Err(
+                    std::io::Error::new(std::io::ErrorKind::TimedOut, "Erase timeout").into(),
+                );
             }
 
             let mut byte = [0];
@@ -124,7 +122,7 @@ impl SF32LB52Tool {
         Ok(())
     }
 
-    fn attempt_connect(&mut self) -> Result<(), std::io::Error> {
+    fn attempt_connect(&mut self) -> Result<()> {
         use crate::Operation;
         use crate::common::sifli_debug::{SifliUartCommand, SifliUartResponse};
 
@@ -142,12 +140,13 @@ impl SF32LB52Tool {
                 self.port.write_request_to_send(false)?;
                 std::thread::sleep(Duration::from_millis(100));
             }
-            let value = match self.debug_command(SifliUartCommand::Enter) {
+            let value: Result<()> = match self.debug_command(SifliUartCommand::Enter) {
                 Ok(SifliUartResponse::Enter) => Ok(()),
                 _ => Err(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     "Failed to enter debug mode",
-                )),
+                )
+                .into()),
             };
             // 如果有限重试，检查是否还有机会
             if let Some(ref mut attempts) = remaining_attempts {
@@ -172,13 +171,10 @@ impl SF32LB52Tool {
                 }
             }
         }
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to connect to the chip",
-        ))
+        Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to connect to the chip").into())
     }
 
-    fn download_stub_impl(&mut self) -> Result<(), std::io::Error> {
+    fn download_stub_impl(&mut self) -> Result<()> {
         use crate::common::sifli_debug::SifliUartCommand;
         use crate::ram_stub::{self, CHIP_FILE_NAME};
         use probe_rs::MemoryMappedRegister;
@@ -226,7 +222,8 @@ impl SF32LB52Tool {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 "No stub file found for the given chip and memory type",
-            ));
+            )
+            .into());
         };
 
         let packet_size = if self.base.compat { 256 } else { 64 * 1024 };
@@ -301,12 +298,12 @@ impl SifliToolTrait for SF32LB52Tool {
         &self.base
     }
 
-    fn set_speed(&mut self, baud: u32) -> Result<(), std::io::Error> {
+    fn set_speed(&mut self, baud: u32) -> Result<()> {
         use crate::speed::SpeedTrait;
         SpeedTrait::set_speed(self, baud)
     }
 
-    fn soft_reset(&mut self) -> Result<(), std::io::Error> {
+    fn soft_reset(&mut self) -> Result<()> {
         use crate::reset::Reset;
         Reset::soft_reset(self)
     }
