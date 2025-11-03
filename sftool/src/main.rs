@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use serialport;
 use sftool_lib::{ChipType, Operation, SifliToolBase, create_sifli_tool};
@@ -83,12 +83,7 @@ fn execute_config_command(
     } else if let Some(ref erase_flash) = config.erase_flash {
         // Parse erase address using existing logic
         let address = sftool_lib::utils::Utils::parse_erase_address(&erase_flash.address.0)
-            .with_context(|| {
-                format!(
-                    "Failed to parse erase address {}",
-                    erase_flash.address.0
-                )
-            })?;
+            .with_context(|| format!("Failed to parse erase address {}", erase_flash.address.0))?;
 
         let erase_params = sftool_lib::EraseFlashParams { address };
         siflitool
@@ -335,9 +330,9 @@ fn get_command_source(args: &Cli, config: Option<SfToolConfig>) -> Result<Comman
     match (&args.command, &config) {
         (Some(cmd), _) => Ok(CommandSource::Cli(cmd.clone())),
         (None, Some(cfg)) => Ok(CommandSource::Config(cfg.clone())),
-        (None, None) => bail!(
-            "No command specified. Use a subcommand or provide a config file with a command."
-        ),
+        (None, None) => {
+            bail!("No command specified. Use a subcommand or provide a config file with a command.")
+        }
     }
 }
 
@@ -494,11 +489,8 @@ fn main() -> Result<()> {
             Commands::ReadFlash(params) => {
                 let mut files = Vec::new();
                 for file_str in params.files.iter() {
-                    let parsed_file =
-                        sftool_lib::utils::Utils::parse_read_file_info(file_str)
-                            .with_context(|| {
-                                format!("Failed to parse read file {}", file_str)
-                            })?;
+                    let parsed_file = sftool_lib::utils::Utils::parse_read_file_info(file_str)
+                        .with_context(|| format!("Failed to parse read file {}", file_str))?;
                     files.push(parsed_file);
                 }
 
@@ -509,9 +501,7 @@ fn main() -> Result<()> {
             }
             Commands::EraseFlash(params) => {
                 let address = sftool_lib::utils::Utils::parse_erase_address(&params.address)
-                    .with_context(|| {
-                        format!("Failed to parse erase address {}", params.address)
-                    })?;
+                    .with_context(|| format!("Failed to parse erase address {}", params.address))?;
 
                 let erase_params = sftool_lib::EraseFlashParams { address };
                 siflitool
@@ -522,9 +512,7 @@ fn main() -> Result<()> {
                 let mut regions = Vec::new();
                 for region_str in params.region.iter() {
                     let parsed_region = sftool_lib::utils::Utils::parse_erase_region(region_str)
-                        .with_context(|| {
-                            format!("Failed to parse erase region {}", region_str)
-                        })?;
+                        .with_context(|| format!("Failed to parse erase region {}", region_str))?;
                     regions.push(parsed_region);
                 }
 

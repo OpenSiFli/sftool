@@ -39,14 +39,11 @@ impl From<RecvError> for Error {
         match err {
             RecvError::Timeout => Error::timeout("receiving UART frame"),
             RecvError::InvalidHeaderLength => Error::protocol("invalid frame length"),
-            RecvError::InvalidHeaderChannel => {
-                Error::protocol("invalid frame channel information")
-            }
+            RecvError::InvalidHeaderChannel => Error::protocol("invalid frame channel information"),
             RecvError::ReadError(e) => Error::from(e),
-            RecvError::InvalidResponse(code) => Error::protocol(format!(
-                "invalid response code: {:#04X}",
-                code
-            )),
+            RecvError::InvalidResponse(code) => {
+                Error::protocol(format!("invalid response code: {:#04X}", code))
+            }
         }
     }
 }
@@ -132,10 +129,7 @@ impl Dhcsr {
 }
 
 pub trait SifliDebug {
-    fn debug_command(
-        &mut self,
-        command: SifliUartCommand,
-    ) -> Result<SifliUartResponse>;
+    fn debug_command(&mut self, command: SifliUartCommand) -> Result<SifliUartResponse>;
     fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<()>;
     fn debug_read_word32(&mut self, addr: u32) -> Result<u32>;
     fn debug_write_core_reg(&mut self, reg: u16, data: u32) -> Result<()>;
@@ -151,8 +145,9 @@ pub trait ChipFrameFormat {
     fn create_header(len: u16) -> Vec<u8>;
 
     /// Parse received frame header and return payload size
-    fn parse_frame_header(reader: &mut BufReader<Box<dyn Read + Send>>)
-        -> std::result::Result<usize, RecvError>;
+    fn parse_frame_header(
+        reader: &mut BufReader<Box<dyn Read + Send>>,
+    ) -> std::result::Result<usize, RecvError>;
 
     /// Encode command data with chip-specific endianness
     fn encode_command_data(command: &SifliUartCommand) -> Vec<u8>;
@@ -477,9 +472,7 @@ pub mod common_debug {
     }
 
     /// Common implementation for debug_step
-    pub fn debug_step_impl<T: SifliTool, F: ChipFrameFormat>(
-        tool: &mut T,
-    ) -> Result<()> {
+    pub fn debug_step_impl<T: SifliTool, F: ChipFrameFormat>(tool: &mut T) -> Result<()> {
         // 这里我们忽略了很多必要的检查，请参考probe-rs源码
         let mut value = Dhcsr(0);
         // Leave halted state.
@@ -497,9 +490,7 @@ pub mod common_debug {
     }
 
     /// Common implementation for debug_run
-    pub fn debug_run_impl<T: SifliTool, F: ChipFrameFormat>(
-        tool: &mut T,
-    ) -> Result<()> {
+    pub fn debug_run_impl<T: SifliTool, F: ChipFrameFormat>(tool: &mut T) -> Result<()> {
         debug_step_impl::<T, F>(tool)?;
         std::thread::sleep(Duration::from_millis(100));
         let mut value = Dhcsr(0);
@@ -514,9 +505,7 @@ pub mod common_debug {
     }
 
     /// Common implementation for debug_halt
-    pub fn debug_halt_impl<T: SifliTool, F: ChipFrameFormat>(
-        tool: &mut T,
-    ) -> Result<()> {
+    pub fn debug_halt_impl<T: SifliTool, F: ChipFrameFormat>(tool: &mut T) -> Result<()> {
         let mut value = Dhcsr(0);
         value.set_c_halt(true);
         value.set_c_debugen(true);

@@ -1,7 +1,7 @@
 use super::SF32LB58Tool;
-use crate::{Result, WriteFlashParams};
 use crate::common::write_flash::FlashWriter;
 use crate::write_flash::WriteFlashTrait;
+use crate::{Result, WriteFlashParams};
 
 impl WriteFlashTrait for SF32LB58Tool {
     fn write_flash(&mut self, params: &WriteFlashParams) -> Result<()> {

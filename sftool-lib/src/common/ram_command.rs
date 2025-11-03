@@ -141,10 +141,7 @@ impl RamOps {
     }
 
     /// 等待响应的通用实现
-    fn wait_for_response(
-        port: &mut Box<dyn SerialPort>,
-        timeout_ms: u128,
-    ) -> Result<Response> {
+    fn wait_for_response(port: &mut Box<dyn SerialPort>, timeout_ms: u128) -> Result<Response> {
         let mut buffer = Vec::new();
         let now = std::time::SystemTime::now();
 

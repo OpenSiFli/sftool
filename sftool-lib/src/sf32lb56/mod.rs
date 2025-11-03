@@ -148,10 +148,7 @@ unsafe impl Sync for SF32LB56Tool {}
 
 // SifliDebug trait implementation for SF32LB56Tool
 impl SifliDebug for SF32LB56Tool {
-    fn debug_command(
-        &mut self,
-        command: SifliUartCommand,
-    ) -> Result<SifliUartResponse> {
+    fn debug_command(&mut self, command: SifliUartCommand) -> Result<SifliUartResponse> {
         common_debug::debug_command_impl::<SF32LB56Tool, SF32LB56FrameFormat>(self, command)
     }
 
@@ -207,11 +204,9 @@ impl SF32LB56Tool {
             if elapsed > 30000 {
                 // 擦除可能需要更长时间
                 tracing::error!("response string is {}", String::from_utf8_lossy(&buffer));
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Erase timeout",
-                )
-                .into());
+                return Err(
+                    std::io::Error::new(std::io::ErrorKind::TimedOut, "Erase timeout").into(),
+                );
             }
 
             let mut byte = [0];
@@ -254,11 +249,9 @@ impl SF32LB56Tool {
             if elapsed > 30000 {
                 // 擦除可能需要更长时间
                 tracing::error!("response string is {}", String::from_utf8_lossy(&buffer));
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Erase timeout",
-                )
-                .into());
+                return Err(
+                    std::io::Error::new(std::io::ErrorKind::TimedOut, "Erase timeout").into(),
+                );
             }
 
             let mut byte = [0];
@@ -331,11 +324,7 @@ impl SF32LB56Tool {
                 }
             }
         }
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to connect to the chip",
-        )
-        .into())
+        Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to connect to the chip").into())
     }
 
     pub fn download_stub_impl(&mut self) -> Result<()> {

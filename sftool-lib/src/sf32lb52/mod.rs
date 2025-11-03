@@ -45,11 +45,9 @@ impl SF32LB52Tool {
             if elapsed > 30000 {
                 // 擦除可能需要更长时间
                 tracing::error!("response string is {}", String::from_utf8_lossy(&buffer));
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Erase timeout",
-                )
-                .into());
+                return Err(
+                    std::io::Error::new(std::io::ErrorKind::TimedOut, "Erase timeout").into(),
+                );
             }
 
             let mut byte = [0];
@@ -98,11 +96,9 @@ impl SF32LB52Tool {
             if elapsed > timeout_ms {
                 // 擦除可能需要更长时间
                 tracing::error!("response string is {}", String::from_utf8_lossy(&buffer));
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Erase timeout",
-                )
-                .into());
+                return Err(
+                    std::io::Error::new(std::io::ErrorKind::TimedOut, "Erase timeout").into(),
+                );
             }
 
             let mut byte = [0];
@@ -175,11 +171,7 @@ impl SF32LB52Tool {
                 }
             }
         }
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to connect to the chip",
-        )
-        .into())
+        Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to connect to the chip").into())
     }
 
     fn download_stub_impl(&mut self) -> Result<()> {

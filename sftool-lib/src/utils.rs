@@ -161,9 +161,7 @@ impl Utils {
     }
 
     /// 将HEX文件转换为WriteFlashFile
-    pub fn hex_to_write_flash_files(
-        hex_file: &Path,
-    ) -> Result<Vec<WriteFlashFile>> {
+    pub fn hex_to_write_flash_files(hex_file: &Path) -> Result<Vec<WriteFlashFile>> {
         let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
 
         let file = std::fs::File::open(hex_file)?;
@@ -392,9 +390,7 @@ impl Utils {
     }
 
     /// 将ELF文件转换为WriteFlashFile  
-    pub fn elf_to_write_flash_files(
-        elf_file: &Path,
-    ) -> Result<Vec<WriteFlashFile>> {
+    pub fn elf_to_write_flash_files(elf_file: &Path) -> Result<Vec<WriteFlashFile>> {
         let mut write_flash_files: Vec<WriteFlashFile> = Vec::new();
         const SECTOR_SIZE: u32 = 0x1000; // 扇区大小
         const FILL_BYTE: u8 = 0xFF; // 填充字节
@@ -491,30 +487,25 @@ impl Utils {
     /// 解析读取文件信息 (filename@address:size格式)
     pub fn parse_read_file_info(file_spec: &str) -> Result<crate::ReadFlashFile> {
         let Some((file_path, addr_size)) = file_spec.split_once('@') else {
-            return Err(Error::invalid_input(
-                format!(
-                    "Invalid format: {}. Expected: filename@address:size",
-                    file_spec
-                ),
-            ));
+            return Err(Error::invalid_input(format!(
+                "Invalid format: {}. Expected: filename@address:size",
+                file_spec
+            )));
         };
 
         let Some((address_str, size_str)) = addr_size.split_once(':') else {
-            return Err(Error::invalid_input(
-                format!(
-                    "Invalid address:size format: {}. Expected: address:size",
-                    addr_size
-                ),
-            ));
+            return Err(Error::invalid_input(format!(
+                "Invalid address:size format: {}. Expected: address:size",
+                addr_size
+            )));
         };
 
         let address = Self::str_to_u32(address_str).map_err(|e| {
             Error::invalid_input(format!("Invalid address '{}': {}", address_str, e))
         })?;
 
-        let size = Self::str_to_u32(size_str).map_err(|e| {
-            Error::invalid_input(format!("Invalid size '{}': {}", size_str, e))
-        })?;
+        let size = Self::str_to_u32(size_str)
+            .map_err(|e| Error::invalid_input(format!("Invalid size '{}': {}", size_str, e)))?;
 
         Ok(crate::ReadFlashFile {
             file_path: file_path.to_string(),
@@ -525,29 +516,25 @@ impl Utils {
 
     /// 解析擦除地址
     pub fn parse_erase_address(address_str: &str) -> Result<u32> {
-        Self::str_to_u32(address_str).map_err(|e| {
-            Error::invalid_input(format!("Invalid address '{}': {}", address_str, e))
-        })
+        Self::str_to_u32(address_str)
+            .map_err(|e| Error::invalid_input(format!("Invalid address '{}': {}", address_str, e)))
     }
 
     /// 解析擦除区域信息 (address:size格式)
     pub fn parse_erase_region(region_spec: &str) -> Result<crate::EraseRegionFile> {
         let Some((address_str, size_str)) = region_spec.split_once(':') else {
-            return Err(Error::invalid_input(
-                format!(
-                    "Invalid region format: {}. Expected: address:size",
-                    region_spec
-                ),
-            ));
+            return Err(Error::invalid_input(format!(
+                "Invalid region format: {}. Expected: address:size",
+                region_spec
+            )));
         };
 
         let address = Self::str_to_u32(address_str).map_err(|e| {
             Error::invalid_input(format!("Invalid address '{}': {}", address_str, e))
         })?;
 
-        let size = Self::str_to_u32(size_str).map_err(|e| {
-            Error::invalid_input(format!("Invalid size '{}': {}", size_str, e))
-        })?;
+        let size = Self::str_to_u32(size_str)
+            .map_err(|e| Error::invalid_input(format!("Invalid size '{}': {}", size_str, e)))?;
 
         Ok(crate::EraseRegionFile { address, size })
     }

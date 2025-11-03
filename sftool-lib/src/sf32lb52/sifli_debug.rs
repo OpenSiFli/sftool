@@ -1,8 +1,8 @@
 use super::SF32LB52Tool;
+use crate::Result;
 use crate::common::sifli_debug::{
     ChipFrameFormat, RecvError, START_WORD, SifliUartCommand, SifliUartResponse, common_debug,
 };
-use crate::Result;
 use std::io::{BufReader, Read};
 
 // Re-export for the module
@@ -88,10 +88,7 @@ impl ChipFrameFormat for SF32LB52FrameFormat {
 }
 
 impl crate::common::sifli_debug::SifliDebug for SF32LB52Tool {
-    fn debug_command(
-        &mut self,
-        command: SifliUartCommand,
-    ) -> Result<SifliUartResponse> {
+    fn debug_command(&mut self, command: SifliUartCommand) -> Result<SifliUartResponse> {
         common_debug::debug_command_impl::<SF32LB52Tool, SF32LB52FrameFormat>(self, command)
     }
 

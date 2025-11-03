@@ -1,6 +1,6 @@
+use crate::Result;
 use crate::common::ram_command::{CommandConfig, RamOps};
 use crate::common::sifli_debug::{SifliDebug, SifliUartCommand};
-use crate::{Result};
 use crate::sf32lb52::SF32LB52Tool;
 
 // 重新导出公共类型，保持向后兼容

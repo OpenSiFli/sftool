@@ -1,7 +1,7 @@
 use super::SF32LB58Tool;
-use crate::{ReadFlashParams, Result};
 use crate::common::read_flash::FlashReader;
 use crate::read_flash::ReadFlashTrait;
+use crate::{ReadFlashParams, Result};
 
 impl ReadFlashTrait for SF32LB58Tool {
     fn read_flash(&mut self, params: &ReadFlashParams) -> Result<()> {

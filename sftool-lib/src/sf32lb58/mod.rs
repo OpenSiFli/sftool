@@ -46,11 +46,7 @@ impl SF32LB58Tool {
     const CHUNK_OVERHEAD: usize = 32 + 4;
 
     /// 发送DFU命令的通用方法
-    fn send_dfu_command(
-        &mut self,
-        data_len: usize,
-        delay_ms: Option<u64>,
-    ) -> Result<()> {
+    fn send_dfu_command(&mut self, data_len: usize, delay_ms: Option<u64>) -> Result<()> {
         let cmd = format!("dfu_recv {}\r", data_len);
         tracing::trace!("Sending DFU command: {}", cmd.trim());
 
@@ -65,12 +61,7 @@ impl SF32LB58Tool {
     }
 
     /// 发送DFU数据的通用方法
-    fn send_dfu_data(
-        &mut self,
-        header: &[u8],
-        data: &[u8],
-        delay_ms: Option<u64>,
-    ) -> Result<()> {
+    fn send_dfu_data(&mut self, header: &[u8], data: &[u8], delay_ms: Option<u64>) -> Result<()> {
         tracing::trace!(
             "Sending DFU data: header={:?}, data_len={}",
             header,

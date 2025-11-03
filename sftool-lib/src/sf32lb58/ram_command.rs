@@ -1,6 +1,6 @@
+use crate::Result;
 use crate::common::ram_command::{CommandConfig, RamOps};
 use crate::sf32lb58::SF32LB58Tool;
-use crate::Result;
 
 // 重新导出公共类型
 pub use crate::common::ram_command::{Command, DownloadStub, RamCommand, Response};

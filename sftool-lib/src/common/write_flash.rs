@@ -1,5 +1,5 @@
-use crate::{Error, Result, SifliToolTrait, WriteFlashFile};
 use crate::common::ram_command::{Command, RamCommand, Response};
+use crate::{Error, Result, SifliToolTrait, WriteFlashFile};
 use std::io::{BufReader, Read, Write};
 
 /// 通用的Flash写入操作实现
@@ -7,10 +7,7 @@ pub struct FlashWriter;
 
 impl FlashWriter {
     /// 擦除所有Flash区域
-    pub fn erase_all<T>(
-        tool: &mut T,
-        write_flash_files: &[WriteFlashFile],
-    ) -> Result<()>
+    pub fn erase_all<T>(tool: &mut T, write_flash_files: &[WriteFlashFile]) -> Result<()>
     where
         T: SifliToolTrait + RamCommand,
     {

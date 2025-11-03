@@ -1,6 +1,6 @@
-use crate::{Error, Result, SifliToolTrait};
 use crate::common::ram_command::{Command, RamCommand};
 use crate::utils::Utils;
+use crate::{Error, Result, SifliToolTrait};
 use std::fs::File;
 use std::io::{Read, Seek, Write};
 use tempfile::tempfile;
@@ -20,20 +20,16 @@ impl FlashReader {
     /// 解析读取文件信息 (filename@address:size格式)
     pub fn parse_file_info(file_spec: &str) -> Result<ReadFlashFile> {
         let Some((file_path, addr_size)) = file_spec.split_once('@') else {
-            return Err(Error::invalid_input(
-                format!(
-                    "Invalid format: {}. Expected: filename@address:size",
-                    file_spec
-                ),
-            ));
+            return Err(Error::invalid_input(format!(
+                "Invalid format: {}. Expected: filename@address:size",
+                file_spec
+            )));
         };
         let Some((addr, size)) = addr_size.split_once(':') else {
-            return Err(Error::invalid_input(
-                format!(
-                    "Invalid format: {}. Expected: filename@address:size",
-                    file_spec
-                ),
-            ));
+            return Err(Error::invalid_input(format!(
+                "Invalid format: {}. Expected: filename@address:size",
+                file_spec
+            )));
         };
 
         let address = Utils::str_to_u32(addr)

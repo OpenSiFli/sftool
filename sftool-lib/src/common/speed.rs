@@ -1,5 +1,5 @@
-use crate::{Result, SifliToolTrait};
 use crate::common::ram_command::{Command, RamCommand};
+use crate::{Result, SifliToolTrait};
 use std::io::Write;
 use std::time::Duration;
 
