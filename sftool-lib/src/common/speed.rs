@@ -15,7 +15,7 @@ impl SpeedOps {
         // 发送设置波特率命令
         tool.command(Command::SetBaud {
             baud: speed,
-            delay: 500,
+            delay: 100,
         })?;
 
         // 设置串口波特率
