@@ -22,7 +22,7 @@ impl SpeedOps {
 
         // 等待一段时间让设置生效
         std::thread::sleep(Duration::from_millis(300));
-        
+
         tool.port().clear(serialport::ClearBuffer::All)?;
 
         RamOps::wait_for_shell_prompt(tool.port(), b"msh >", 200, 5)?;
