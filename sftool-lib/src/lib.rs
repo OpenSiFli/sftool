@@ -6,6 +6,8 @@ pub mod speed;
 pub mod utils;
 pub mod write_flash;
 
+pub mod error;
+
 // 进度条回调系统
 pub mod progress;
 
@@ -21,6 +23,7 @@ pub mod sf32lb58;
 pub use crate::erase_flash::EraseFlashTrait;
 pub use crate::read_flash::ReadFlashTrait;
 pub use crate::write_flash::WriteFlashTrait;
+pub use error::{Error, Result};
 
 use crate::progress::{ProgressCallbackArc, ProgressHelper, no_op_progress_callback};
 use serialport::SerialPort;
@@ -161,8 +164,8 @@ pub trait SifliToolTrait: Send + Sync {
         self.base().progress_helper.clone()
     }
 
-    fn set_speed(&mut self, baud: u32) -> Result<(), std::io::Error>;
-    fn soft_reset(&mut self) -> Result<(), std::io::Error>;
+    fn set_speed(&mut self, baud: u32) -> Result<()>;
+    fn soft_reset(&mut self) -> Result<()>;
 }
 
 pub trait SifliTool:

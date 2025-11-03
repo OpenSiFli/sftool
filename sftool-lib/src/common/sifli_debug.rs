@@ -1,4 +1,4 @@
-use crate::SifliTool;
+use crate::{Error, Result, SifliTool};
 use probe_rs::architecture::arm::armv8m::Dcrdr;
 use probe_rs::{MemoryMappedRegister, memory_mapped_bitfield_register};
 use std::cmp::{max, min};
@@ -34,26 +34,19 @@ pub enum RecvError {
     InvalidResponse(u8),
 }
 
-impl From<RecvError> for std::io::Error {
+impl From<RecvError> for Error {
     fn from(err: RecvError) -> Self {
         match err {
-            RecvError::Timeout => {
-                std::io::Error::new(std::io::ErrorKind::TimedOut, "Receive data timeout")
+            RecvError::Timeout => Error::timeout("receiving UART frame"),
+            RecvError::InvalidHeaderLength => Error::protocol("invalid frame length"),
+            RecvError::InvalidHeaderChannel => {
+                Error::protocol("invalid frame channel information")
             }
-            RecvError::InvalidHeaderLength => {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid frame length")
-            }
-            RecvError::InvalidHeaderChannel => std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid frame channel information",
-            ),
-            RecvError::ReadError(e) => {
-                std::io::Error::new(e.kind(), format!("Data read error: {}", e))
-            }
-            RecvError::InvalidResponse(code) => std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid response code: {:#04X}", code),
-            ),
+            RecvError::ReadError(e) => Error::from(e),
+            RecvError::InvalidResponse(code) => Error::protocol(format!(
+                "invalid response code: {:#04X}",
+                code
+            )),
         }
     }
 }
@@ -142,14 +135,14 @@ pub trait SifliDebug {
     fn debug_command(
         &mut self,
         command: SifliUartCommand,
-    ) -> Result<SifliUartResponse, std::io::Error>;
-    fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<(), std::io::Error>;
-    fn debug_read_word32(&mut self, addr: u32) -> Result<u32, std::io::Error>;
-    fn debug_write_core_reg(&mut self, reg: u16, data: u32) -> Result<(), std::io::Error>;
-    fn debug_write_memory(&mut self, addr: u32, data: &[u8]) -> Result<(), std::io::Error>;
-    fn debug_run(&mut self) -> Result<(), std::io::Error>;
-    fn debug_halt(&mut self) -> Result<(), std::io::Error>;
-    fn debug_step(&mut self) -> Result<(), std::io::Error>;
+    ) -> Result<SifliUartResponse>;
+    fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<()>;
+    fn debug_read_word32(&mut self, addr: u32) -> Result<u32>;
+    fn debug_write_core_reg(&mut self, reg: u16, data: u32) -> Result<()>;
+    fn debug_write_memory(&mut self, addr: u32, data: &[u8]) -> Result<()>;
+    fn debug_run(&mut self) -> Result<()>;
+    fn debug_halt(&mut self) -> Result<()>;
+    fn debug_step(&mut self) -> Result<()>;
 }
 
 // Trait defining chip-specific frame formatting behavior
@@ -159,7 +152,7 @@ pub trait ChipFrameFormat {
 
     /// Parse received frame header and return payload size
     fn parse_frame_header(reader: &mut BufReader<Box<dyn Read + Send>>)
-    -> Result<usize, RecvError>;
+        -> std::result::Result<usize, RecvError>;
 
     /// Encode command data with chip-specific endianness
     fn encode_command_data(command: &SifliUartCommand) -> Vec<u8>;
@@ -177,7 +170,7 @@ pub trait ChipFrameFormat {
 pub fn send_command<F: ChipFrameFormat>(
     writer: &mut BufWriter<Box<dyn Write + Send>>,
     command: &SifliUartCommand,
-) -> Result<(), std::io::Error> {
+) -> Result<()> {
     let send_data = F::encode_command_data(command);
     let header = F::create_header(send_data.len() as u16);
 
@@ -189,7 +182,7 @@ pub fn send_command<F: ChipFrameFormat>(
 
 pub fn recv_response<F: ChipFrameFormat>(
     reader: &mut BufReader<Box<dyn Read + Send>>,
-) -> Result<SifliUartResponse, std::io::Error> {
+) -> Result<SifliUartResponse> {
     let start_time = Instant::now();
     let mut temp: Vec<u8> = vec![];
 
@@ -312,7 +305,7 @@ pub mod common_debug {
     pub fn debug_command_impl<T: SifliTool, F: ChipFrameFormat>(
         tool: &mut T,
         command: SifliUartCommand,
-    ) -> Result<SifliUartResponse, std::io::Error> {
+    ) -> Result<SifliUartResponse> {
         tracing::info!("Command: {}", command);
         let writer: Box<dyn Write + Send> = tool.port().try_clone()?;
         let mut buf_writer = BufWriter::new(writer);
@@ -336,7 +329,7 @@ pub mod common_debug {
     pub fn debug_read_word32_impl<T: SifliTool, F: ChipFrameFormat>(
         tool: &mut T,
         addr: u32,
-    ) -> Result<u32, std::io::Error> {
+    ) -> Result<u32> {
         let mapped_addr = F::map_address(addr);
         let command = SifliUartCommand::MEMRead {
             addr: mapped_addr,
@@ -347,18 +340,12 @@ pub mod common_debug {
         match debug_command_impl::<T, F>(tool, command) {
             Ok(SifliUartResponse::MEMRead { data }) => {
                 if data.len() != 4 {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Invalid response length",
-                    ));
+                    return Err(Error::invalid_input("invalid response length"));
                 }
                 let value = F::decode_response_data(&data);
                 Ok(value)
             }
-            Ok(_) => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid response",
-            )),
+            Ok(_) => Err(Error::invalid_input("invalid response")),
             Err(e) => Err(e),
         }
     }
@@ -368,7 +355,7 @@ pub mod common_debug {
         tool: &mut T,
         addr: u32,
         data: u32,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<()> {
         let mapped_addr = F::map_address(addr);
         let command = SifliUartCommand::MEMWrite {
             addr: mapped_addr,
@@ -376,10 +363,7 @@ pub mod common_debug {
         };
         match debug_command_impl::<T, F>(tool, command) {
             Ok(SifliUartResponse::MEMWrite) => Ok(()),
-            Ok(_) => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid response",
-            )),
+            Ok(_) => Err(Error::invalid_input("invalid response")),
             Err(e) => Err(e),
         }
     }
@@ -389,7 +373,7 @@ pub mod common_debug {
         tool: &mut T,
         address: u32,
         data: &[u8],
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<()> {
         if data.is_empty() {
             return Ok(());
         }
@@ -439,10 +423,7 @@ pub mod common_debug {
                         value.to_le_bytes()
                     }
                     _ => {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            "Invalid response length",
-                        ));
+                        return Err(Error::invalid_input("invalid response length"));
                     }
                 };
                 // Calculate the overlap of the block with the new data area
@@ -481,7 +462,7 @@ pub mod common_debug {
         tool: &mut T,
         addr: u16,
         value: u32,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<()> {
         debug_write_word32_impl::<T, F>(tool, Dcrdr::get_mmio_address() as u32, value)?;
 
         let mut dcrsr_val = Dcrsr(0);
@@ -498,7 +479,7 @@ pub mod common_debug {
     /// Common implementation for debug_step
     pub fn debug_step_impl<T: SifliTool, F: ChipFrameFormat>(
         tool: &mut T,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<()> {
         // 这里我们忽略了很多必要的检查，请参考probe-rs源码
         let mut value = Dhcsr(0);
         // Leave halted state.
@@ -518,7 +499,7 @@ pub mod common_debug {
     /// Common implementation for debug_run
     pub fn debug_run_impl<T: SifliTool, F: ChipFrameFormat>(
         tool: &mut T,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<()> {
         debug_step_impl::<T, F>(tool)?;
         std::thread::sleep(Duration::from_millis(100));
         let mut value = Dhcsr(0);
@@ -535,7 +516,7 @@ pub mod common_debug {
     /// Common implementation for debug_halt
     pub fn debug_halt_impl<T: SifliTool, F: ChipFrameFormat>(
         tool: &mut T,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<()> {
         let mut value = Dhcsr(0);
         value.set_c_halt(true);
         value.set_c_debugen(true);

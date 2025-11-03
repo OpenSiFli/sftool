@@ -1,4 +1,4 @@
-use crate::SifliToolTrait;
+use crate::{Error, Result, SifliToolTrait};
 use crate::common::ram_command::{Command, RamCommand};
 use crate::utils::Utils;
 use std::fs::File;
@@ -18,10 +18,9 @@ pub struct FlashReader;
 
 impl FlashReader {
     /// 解析读取文件信息 (filename@address:size格式)
-    pub fn parse_file_info(file_spec: &str) -> Result<ReadFlashFile, std::io::Error> {
+    pub fn parse_file_info(file_spec: &str) -> Result<ReadFlashFile> {
         let Some((file_path, addr_size)) = file_spec.split_once('@') else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
+            return Err(Error::invalid_input(
                 format!(
                     "Invalid format: {}. Expected: filename@address:size",
                     file_spec
@@ -29,8 +28,7 @@ impl FlashReader {
             ));
         };
         let Some((addr, size)) = addr_size.split_once(':') else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
+            return Err(Error::invalid_input(
                 format!(
                     "Invalid format: {}. Expected: filename@address:size",
                     file_spec
@@ -39,9 +37,9 @@ impl FlashReader {
         };
 
         let address = Utils::str_to_u32(addr)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+            .map_err(|e| Error::invalid_input(format!("Invalid address '{}': {}", addr, e)))?;
         let size = Utils::str_to_u32(size)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+            .map_err(|e| Error::invalid_input(format!("Invalid size '{}': {}", size, e)))?;
 
         Ok(ReadFlashFile {
             file_path: file_path.to_string(),
@@ -56,7 +54,7 @@ impl FlashReader {
         address: u32,
         size: u32,
         output_path: &str,
-    ) -> Result<(), std::io::Error>
+    ) -> Result<()>
     where
         T: SifliToolTrait + RamCommand,
     {
@@ -97,10 +95,10 @@ impl FlashReader {
                     Err(_) => {
                         // 超时检查
                         if start_time.elapsed().unwrap().as_millis() > 10000 {
-                            return Err(std::io::Error::new(
-                                std::io::ErrorKind::TimedOut,
-                                "Read timeout",
-                            ));
+                            return Err(Error::timeout(format!(
+                                "reading flash at 0x{:08X}",
+                                current_address
+                            )));
                         }
                         continue;
                     }

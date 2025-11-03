@@ -13,7 +13,7 @@ use crate::common::sifli_debug::{
     common_debug,
 };
 use crate::sf32lb56::ram_command::DownloadStub;
-use crate::{SifliTool, SifliToolBase, SifliToolTrait};
+use crate::{Result, SifliTool, SifliToolBase, SifliToolTrait};
 use serialport::SerialPort;
 use std::io::{BufReader, Read};
 use std::time::Duration;
@@ -40,7 +40,7 @@ impl ChipFrameFormat for SF32LB56FrameFormat {
 
     fn parse_frame_header(
         reader: &mut BufReader<Box<dyn Read + Send>>,
-    ) -> Result<usize, RecvError> {
+    ) -> std::result::Result<usize, RecvError> {
         // 读取长度 (2字节) - SF32LB56 uses big-endian
         let mut length_bytes = [0; 2];
         if let Err(e) = reader.read_exact(&mut length_bytes) {
@@ -151,44 +151,44 @@ impl SifliDebug for SF32LB56Tool {
     fn debug_command(
         &mut self,
         command: SifliUartCommand,
-    ) -> Result<SifliUartResponse, std::io::Error> {
+    ) -> Result<SifliUartResponse> {
         common_debug::debug_command_impl::<SF32LB56Tool, SF32LB56FrameFormat>(self, command)
     }
 
-    fn debug_read_word32(&mut self, addr: u32) -> Result<u32, std::io::Error> {
+    fn debug_read_word32(&mut self, addr: u32) -> Result<u32> {
         common_debug::debug_read_word32_impl::<SF32LB56Tool, SF32LB56FrameFormat>(self, addr)
     }
 
-    fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<(), std::io::Error> {
+    fn debug_write_word32(&mut self, addr: u32, data: u32) -> Result<()> {
         common_debug::debug_write_word32_impl::<SF32LB56Tool, SF32LB56FrameFormat>(self, addr, data)
     }
 
-    fn debug_write_memory(&mut self, addr: u32, data: &[u8]) -> Result<(), std::io::Error> {
+    fn debug_write_memory(&mut self, addr: u32, data: &[u8]) -> Result<()> {
         common_debug::debug_write_memory_impl::<SF32LB56Tool, SF32LB56FrameFormat>(self, addr, data)
     }
 
-    fn debug_write_core_reg(&mut self, reg: u16, data: u32) -> Result<(), std::io::Error> {
+    fn debug_write_core_reg(&mut self, reg: u16, data: u32) -> Result<()> {
         common_debug::debug_write_core_reg_impl::<SF32LB56Tool, SF32LB56FrameFormat>(
             self, reg, data,
         )
     }
 
-    fn debug_step(&mut self) -> Result<(), std::io::Error> {
+    fn debug_step(&mut self) -> Result<()> {
         common_debug::debug_step_impl::<SF32LB56Tool, SF32LB56FrameFormat>(self)
     }
 
-    fn debug_run(&mut self) -> Result<(), std::io::Error> {
+    fn debug_run(&mut self) -> Result<()> {
         common_debug::debug_run_impl::<SF32LB56Tool, SF32LB56FrameFormat>(self)
     }
 
-    fn debug_halt(&mut self) -> Result<(), std::io::Error> {
+    fn debug_halt(&mut self) -> Result<()> {
         common_debug::debug_halt_impl::<SF32LB56Tool, SF32LB56FrameFormat>(self)
     }
 }
 
 impl SF32LB56Tool {
     /// 执行全部flash擦除的内部方法
-    pub fn internal_erase_all(&mut self, address: u32) -> Result<(), std::io::Error> {
+    pub fn internal_erase_all(&mut self, address: u32) -> Result<()> {
         use ram_command::{Command, RamCommand};
 
         let progress = self.progress();
@@ -210,7 +210,8 @@ impl SF32LB56Tool {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
                     "Erase timeout",
-                ));
+                )
+                .into());
             }
 
             let mut byte = [0];
@@ -232,7 +233,7 @@ impl SF32LB56Tool {
     }
 
     /// 执行区域擦除的内部方法
-    pub fn internal_erase_region(&mut self, address: u32, len: u32) -> Result<(), std::io::Error> {
+    pub fn internal_erase_region(&mut self, address: u32, len: u32) -> Result<()> {
         use ram_command::{Command, RamCommand};
 
         let progress = self.progress();
@@ -256,7 +257,8 @@ impl SF32LB56Tool {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
                     "Erase timeout",
-                ));
+                )
+                .into());
             }
 
             let mut byte = [0];
@@ -280,7 +282,7 @@ impl SF32LB56Tool {
         Ok(())
     }
 
-    pub fn attempt_connect(&mut self) -> Result<(), std::io::Error> {
+    pub fn attempt_connect(&mut self) -> Result<()> {
         use crate::Operation;
         use crate::common::sifli_debug::{SifliUartCommand, SifliUartResponse};
 
@@ -298,12 +300,13 @@ impl SF32LB56Tool {
                 self.port.write_request_to_send(false)?;
                 std::thread::sleep(Duration::from_millis(100));
             }
-            let value = match self.debug_command(SifliUartCommand::Enter) {
+            let value: Result<()> = match self.debug_command(SifliUartCommand::Enter) {
                 Ok(SifliUartResponse::Enter) => Ok(()),
                 _ => Err(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     "Failed to enter debug mode",
-                )),
+                )
+                .into()),
             };
             // 如果有限重试，检查是否还有机会
             if let Some(ref mut attempts) = remaining_attempts {
@@ -331,10 +334,11 @@ impl SF32LB56Tool {
         Err(std::io::Error::new(
             std::io::ErrorKind::Other,
             "Failed to connect to the chip",
-        ))
+        )
+        .into())
     }
 
-    pub fn download_stub_impl(&mut self) -> Result<(), std::io::Error> {
+    pub fn download_stub_impl(&mut self) -> Result<()> {
         use crate::common::sifli_debug::SifliUartCommand;
         use crate::ram_stub::{self, CHIP_FILE_NAME};
         use probe_rs::MemoryMappedRegister;
@@ -392,7 +396,8 @@ impl SF32LB56Tool {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 "No stub file found for the given chip and memory type",
-            ));
+            )
+            .into());
         };
 
         let packet_size = if self.base.compat { 256 } else { 64 * 1024 };
@@ -454,12 +459,12 @@ impl SifliToolTrait for SF32LB56Tool {
         &self.base
     }
 
-    fn set_speed(&mut self, baud: u32) -> Result<(), std::io::Error> {
+    fn set_speed(&mut self, baud: u32) -> Result<()> {
         use crate::speed::SpeedTrait;
         SpeedTrait::set_speed(self, baud)
     }
 
-    fn soft_reset(&mut self) -> Result<(), std::io::Error> {
+    fn soft_reset(&mut self) -> Result<()> {
         use crate::reset::Reset;
         Reset::soft_reset(self)
     }

@@ -1,16 +1,17 @@
 use crate::common::ram_command::{CommandConfig, RamOps};
 use crate::common::sifli_debug::{SifliDebug, SifliUartCommand};
+use crate::{Result};
 use crate::sf32lb52::SF32LB52Tool;
 
 // 重新导出公共类型，保持向后兼容
 pub use crate::common::ram_command::{Command, DownloadStub, RamCommand, Response};
 
 impl RamCommand for SF32LB52Tool {
-    fn command(&mut self, cmd: Command) -> Result<Response, std::io::Error> {
+    fn command(&mut self, cmd: Command) -> Result<Response> {
         RamOps::send_command_and_wait_response(&mut self.port, cmd, self.base.memory_type.as_str())
     }
 
-    fn send_data(&mut self, data: &[u8]) -> Result<Response, std::io::Error> {
+    fn send_data(&mut self, data: &[u8]) -> Result<Response> {
         let config = CommandConfig {
             compat_mode: self.base.compat,
             ..Default::default()
@@ -20,7 +21,7 @@ impl RamCommand for SF32LB52Tool {
 }
 
 impl DownloadStub for SF32LB52Tool {
-    fn download_stub(&mut self) -> Result<(), std::io::Error> {
+    fn download_stub(&mut self) -> Result<()> {
         // Use SifliTool trait methods
         self.attempt_connect()?;
         self.download_stub_impl()?;

@@ -1,5 +1,5 @@
-use crate::WriteFlashParams;
+use crate::{Result, WriteFlashParams};
 
 pub trait WriteFlashTrait {
-    fn write_flash(&mut self, params: &WriteFlashParams) -> Result<(), std::io::Error>;
+    fn write_flash(&mut self, params: &WriteFlashParams) -> Result<()>;
 }

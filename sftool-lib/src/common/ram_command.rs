@@ -1,3 +1,4 @@
+use crate::{Error, Result};
 use serialport::SerialPort;
 use std::io::{Read, Write};
 use std::str::FromStr;
@@ -47,13 +48,13 @@ pub const RESPONSE_STR_TABLE: [&str; 3] = ["OK", "Fail", "RX_WAIT"];
 
 /// RAM命令处理trait，定义了发送命令和数据的接口
 pub trait RamCommand {
-    fn command(&mut self, cmd: Command) -> Result<Response, std::io::Error>;
-    fn send_data(&mut self, data: &[u8]) -> Result<Response, std::io::Error>;
+    fn command(&mut self, cmd: Command) -> Result<Response>;
+    fn send_data(&mut self, data: &[u8]) -> Result<Response>;
 }
 
 /// Stub下载trait，定义了下载stub的接口
 pub trait DownloadStub {
-    fn download_stub(&mut self) -> Result<(), std::io::Error>;
+    fn download_stub(&mut self) -> Result<()>;
 }
 
 /// 命令处理的配置参数
@@ -85,7 +86,7 @@ impl RamOps {
         port: &mut Box<dyn SerialPort>,
         cmd: Command,
         memory_type: &str,
-    ) -> Result<Response, std::io::Error> {
+    ) -> Result<Response> {
         tracing::debug!("command: {:?}", cmd);
 
         // 发送命令
@@ -122,7 +123,7 @@ impl RamOps {
         port: &mut Box<dyn SerialPort>,
         data: &[u8],
         config: &CommandConfig,
-    ) -> Result<Response, std::io::Error> {
+    ) -> Result<Response> {
         // 根据配置发送数据
         if !config.compat_mode {
             port.write_all(data)?;
@@ -143,7 +144,7 @@ impl RamOps {
     fn wait_for_response(
         port: &mut Box<dyn SerialPort>,
         timeout_ms: u128,
-    ) -> Result<Response, std::io::Error> {
+    ) -> Result<Response> {
         let mut buffer = Vec::new();
         let now = std::time::SystemTime::now();
 
@@ -151,7 +152,7 @@ impl RamOps {
             let elapsed = now.elapsed().unwrap().as_millis();
             if elapsed > timeout_ms {
                 tracing::debug!("Response buffer: {:?}", String::from_utf8_lossy(&buffer));
-                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timeout"));
+                return Err(Error::timeout("waiting for RAM command response"));
             }
 
             let mut byte = [0];
@@ -169,9 +170,8 @@ impl RamOps {
                     .any(|window| window == response_bytes);
                 if exists {
                     tracing::debug!("Response buffer: {:?}", String::from_utf8_lossy(&buffer));
-                    return Response::from_str(response_str).map_err(|e| {
-                        std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-                    });
+                    return Response::from_str(response_str)
+                        .map_err(|e| Error::invalid_input(e.to_string()));
                 }
             }
         }
@@ -183,7 +183,7 @@ impl RamOps {
         prompt: &[u8],
         retry_interval_ms: u64,
         max_retries: u32,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<()> {
         let mut buffer = Vec::new();
         let mut now = std::time::SystemTime::now();
         let mut retry_count = 0;
@@ -210,7 +210,7 @@ impl RamOps {
             }
 
             if retry_count > max_retries {
-                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timeout"));
+                return Err(Error::timeout("waiting for shell prompt"));
             }
 
             let mut byte = [0];
