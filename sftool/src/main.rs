@@ -1,6 +1,5 @@
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand, ValueEnum};
-use serialport;
 use sftool_lib::{ChipType, Operation, SifliToolBase, create_sifli_tool};
 use strum::{Display, EnumString};
 
@@ -9,6 +8,18 @@ mod progress;
 
 use config::SfToolConfig;
 use progress::create_indicatif_progress_callback;
+
+type MergedConfig = (
+    ChipType,
+    String,
+    String,
+    u32,
+    Operation,
+    Operation,
+    i8,
+    bool,
+    bool,
+);
 
 /// Convert config file WriteFlashFileConfig to string format expected by CLI
 fn config_write_file_to_string(file: &config::WriteFlashFileConfig) -> String {
@@ -246,22 +257,9 @@ fn memory_to_string(memory: &Memory) -> String {
 }
 
 /// Merge CLI arguments with configuration file, CLI args take precedence
-fn merge_config(
-    args: &Cli,
-    config: Option<SfToolConfig>,
-) -> Result<(
-    ChipType,
-    String,
-    String,
-    u32,
-    Operation,
-    Operation,
-    i8,
-    bool,
-    bool,
-)> {
+fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<MergedConfig> {
     // 使用配置文件或默认配置
-    let base_config = config.unwrap_or_else(|| SfToolConfig::with_defaults());
+    let base_config = config.unwrap_or_else(SfToolConfig::with_defaults);
 
     let chip = match &args.chip {
         Some(c) => c.clone(),

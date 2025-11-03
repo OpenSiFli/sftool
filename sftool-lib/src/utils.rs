@@ -179,7 +179,7 @@ impl Utils {
                 continue;
             }
 
-            let ihex_record = ihex::Record::from_record_string(&line)?;
+            let ihex_record = ihex::Record::from_record_string(line)?;
 
             match ihex_record {
                 ihex::Record::ExtendedLinearAddress(addr) => {
@@ -292,7 +292,7 @@ impl Utils {
                 continue;
             }
 
-            let ihex_record = ihex::Record::from_record_string(&line)?;
+            let ihex_record = ihex::Record::from_record_string(line)?;
 
             match ihex_record {
                 ihex::Record::ExtendedLinearAddress(addr) => {

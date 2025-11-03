@@ -115,7 +115,7 @@ impl FlashWriter {
         }
 
         let end_address = file.address + file.file.metadata()?.len() as u32 - 1;
-        download_bar.finish_with_message(&format!(
+        download_bar.finish_with_message(format!(
             "Downloaded successfully for 0x{:08X}..0x{:08X}",
             file.address, end_address
         ));
@@ -160,7 +160,7 @@ impl FlashWriter {
             }
             tool.port().write_all(
                 Command::Write {
-                    address: address,
+                    address,
                     len: bytes_read as u32,
                 }
                 .to_string()
@@ -179,7 +179,7 @@ impl FlashWriter {
         }
 
         let end_address = file.address + file.file.metadata()?.len() as u32 - 1;
-        download_bar.finish_with_message(&format!(
+        download_bar.finish_with_message(format!(
             "Downloaded successfully for 0x{:08X}..0x{:08X}",
             file.address, end_address
         ));
