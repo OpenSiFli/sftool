@@ -1,8 +1,7 @@
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use serialport;
 use sftool_lib::{ChipType, Operation, SifliToolBase, create_sifli_tool};
-use std::io::ErrorKind;
-use std::process;
 use strum::{Display, EnumString};
 
 mod config;
@@ -12,10 +11,10 @@ use config::SfToolConfig;
 use progress::create_indicatif_progress_callback;
 
 /// Convert config file WriteFlashFileConfig to string format expected by CLI
-fn config_write_file_to_string(file: &config::WriteFlashFileConfig) -> Result<String, String> {
+fn config_write_file_to_string(file: &config::WriteFlashFileConfig) -> String {
     match &file.address {
-        Some(addr) => Ok(format!("{}@{}", file.path, addr.0)),
-        None => Ok(file.path.clone()),
+        Some(addr) => format!("{}@{}", file.path, addr.0),
+        None => file.path.clone(),
     }
 }
 
@@ -33,32 +32,21 @@ fn config_region_to_string(region: &config::RegionItemConfig) -> String {
 fn execute_config_command(
     config: &SfToolConfig,
     siflitool: &mut Box<dyn sftool_lib::SifliTool>,
-) -> Result<(), std::io::Error> {
+) -> Result<()> {
     if let Some(ref write_flash) = config.write_flash {
         // Convert config files to CLI format
-        let mut files = Vec::new();
-        for file_config in &write_flash.files {
-            match config_write_file_to_string(file_config) {
-                Ok(file_str) => files.push(file_str),
-                Err(e) => {
-                    eprintln!("Failed to convert config file {}: {}", file_config.path, e);
-                    std::process::exit(1);
-                }
-            }
-        }
+        let files: Vec<String> = write_flash
+            .files
+            .iter()
+            .map(config_write_file_to_string)
+            .collect();
 
         // Parse files using existing logic
         let mut parsed_files = Vec::new();
         for file_str in files.iter() {
-            match sftool_lib::utils::Utils::parse_file_info(file_str) {
-                Ok(mut parsed) => {
-                    parsed_files.append(&mut parsed);
-                }
-                Err(e) => {
-                    eprintln!("Failed to parse file {}: {}", file_str, e);
-                    std::process::exit(1);
-                }
-            }
+            let mut parsed = sftool_lib::utils::Utils::parse_file_info(file_str)
+                .with_context(|| format!("Failed to parse file {}", file_str))?;
+            parsed_files.append(&mut parsed);
         }
 
         let write_params = sftool_lib::WriteFlashParams {
@@ -67,7 +55,9 @@ fn execute_config_command(
             no_compress: write_flash.no_compress,
             erase_all: write_flash.erase_all,
         };
-        siflitool.write_flash(&write_params)
+        siflitool
+            .write_flash(&write_params)
+            .context("Failed to execute write_flash command")
     } else if let Some(ref read_flash) = config.read_flash {
         // Convert config files to CLI format
         let files: Vec<String> = read_flash
@@ -79,36 +69,31 @@ fn execute_config_command(
         // Parse files using existing logic
         let mut parsed_files = Vec::new();
         for file_str in files.iter() {
-            match sftool_lib::utils::Utils::parse_read_file_info(file_str) {
-                Ok(parsed_file) => {
-                    parsed_files.push(parsed_file);
-                }
-                Err(e) => {
-                    eprintln!("Failed to parse read file {}: {}", file_str, e);
-                    std::process::exit(1);
-                }
-            }
+            let parsed_file = sftool_lib::utils::Utils::parse_read_file_info(file_str)
+                .with_context(|| format!("Failed to parse read file {}", file_str))?;
+            parsed_files.push(parsed_file);
         }
 
         let read_params = sftool_lib::ReadFlashParams {
             files: parsed_files,
         };
-        siflitool.read_flash(&read_params)
+        siflitool
+            .read_flash(&read_params)
+            .context("Failed to execute read_flash command")
     } else if let Some(ref erase_flash) = config.erase_flash {
         // Parse erase address using existing logic
-        let address = match sftool_lib::utils::Utils::parse_erase_address(&erase_flash.address.0) {
-            Ok(addr) => addr,
-            Err(e) => {
-                eprintln!(
-                    "Failed to parse erase address {}: {}",
-                    erase_flash.address.0, e
-                );
-                std::process::exit(1);
-            }
-        };
+        let address = sftool_lib::utils::Utils::parse_erase_address(&erase_flash.address.0)
+            .with_context(|| {
+                format!(
+                    "Failed to parse erase address {}",
+                    erase_flash.address.0
+                )
+            })?;
 
         let erase_params = sftool_lib::EraseFlashParams { address };
-        siflitool.erase_flash(&erase_params)
+        siflitool
+            .erase_flash(&erase_params)
+            .context("Failed to execute erase_flash command")
     } else if let Some(ref erase_region) = config.erase_region {
         // Convert config regions to CLI format
         let regions: Vec<String> = erase_region
@@ -120,26 +105,19 @@ fn execute_config_command(
         // Parse regions using existing logic
         let mut parsed_regions = Vec::new();
         for region_str in regions.iter() {
-            match sftool_lib::utils::Utils::parse_erase_region(region_str) {
-                Ok(parsed_region) => {
-                    parsed_regions.push(parsed_region);
-                }
-                Err(e) => {
-                    eprintln!("Failed to parse erase region {}: {}", region_str, e);
-                    std::process::exit(1);
-                }
-            }
+            let parsed_region = sftool_lib::utils::Utils::parse_erase_region(region_str)
+                .with_context(|| format!("Failed to parse erase region {}", region_str))?;
+            parsed_regions.push(parsed_region);
         }
 
         let erase_region_params = sftool_lib::EraseRegionParams {
             regions: parsed_regions,
         };
-        siflitool.erase_region(&erase_region_params)
+        siflitool
+            .erase_region(&erase_region_params)
+            .context("Failed to execute erase_region command")
     } else {
-        Err(std::io::Error::new(
-            ErrorKind::InvalidInput,
-            "No valid command found in config file.",
-        ))
+        bail!("No valid command found in config file.")
     }
 }
 
@@ -276,20 +254,17 @@ fn memory_to_string(memory: &Memory) -> String {
 fn merge_config(
     args: &Cli,
     config: Option<SfToolConfig>,
-) -> Result<
-    (
-        ChipType,
-        String,
-        String,
-        u32,
-        Operation,
-        Operation,
-        i8,
-        bool,
-        bool,
-    ),
+) -> Result<(
+    ChipType,
     String,
-> {
+    String,
+    u32,
+    Operation,
+    Operation,
+    i8,
+    bool,
+    bool,
+)> {
     // 使用配置文件或默认配置
     let base_config = config.unwrap_or_else(|| SfToolConfig::with_defaults());
 
@@ -297,7 +272,7 @@ fn merge_config(
         Some(c) => c.clone(),
         None => base_config
             .parse_chip_type()
-            .map_err(|e| format!("Invalid chip type in config: {}", e))?,
+            .map_err(|e| anyhow!("Invalid chip type in config: {}", e))?,
     };
 
     let memory = args
@@ -316,14 +291,14 @@ fn merge_config(
         Some(b) => b.clone(),
         None => base_config
             .parse_before()
-            .map_err(|e| format!("Invalid before operation in config: {}", e))?,
+            .map_err(|e| anyhow!("Invalid before operation in config: {}", e))?,
     };
 
     let after = match &args.after {
         Some(a) => a.clone(),
         None => base_config
             .parse_after()
-            .map_err(|e| format!("Invalid after operation in config: {}", e))?,
+            .map_err(|e| anyhow!("Invalid after operation in config: {}", e))?,
     };
 
     let connect_attempts = args
@@ -333,7 +308,7 @@ fn merge_config(
     let quiet = args.quiet;
     // 验证必需字段
     if port.is_empty() {
-        return Err("Port must be specified either via --port or in config file".to_string());
+        bail!("Port must be specified either via --port or in config file");
     }
 
     Ok((
@@ -356,13 +331,12 @@ enum CommandSource {
     Config(SfToolConfig),
 }
 
-fn get_command_source(args: &Cli, config: Option<SfToolConfig>) -> Result<CommandSource, String> {
+fn get_command_source(args: &Cli, config: Option<SfToolConfig>) -> Result<CommandSource> {
     match (&args.command, &config) {
         (Some(cmd), _) => Ok(CommandSource::Cli(cmd.clone())),
         (None, Some(cfg)) => Ok(CommandSource::Config(cfg.clone())),
-        (None, None) => Err(
+        (None, None) => bail!(
             "No command specified. Use a subcommand or provide a config file with a command."
-                .to_string(),
         ),
     }
 }
@@ -394,7 +368,7 @@ fn normalize_mac_port_name(port_name: &str) -> String {
 ///
 /// # Returns
 /// * `Result<(), String>` - Returns Ok(()) if the port is available; otherwise returns an Err with error message
-fn check_port_available(port_name: &str) -> Result<(), String> {
+fn check_port_available(port_name: &str) -> Result<()> {
     match serialport::available_ports() {
         Ok(ports) => {
             // On macOS, only use /dev/cu.* ports, not /dev/tty.* ports
@@ -414,28 +388,28 @@ fn check_port_available(port_name: &str) -> Result<(), String> {
 
             // Check if the specified port is in the available list
             if filtered_ports.iter().any(|p| p.port_name == port_name) {
-                Ok(())
-            } else {
-                // If the port doesn't exist, return an error and list all available ports
-                let available_ports: Vec<String> =
-                    filtered_ports.iter().map(|p| p.port_name.clone()).collect();
-
-                Err(format!(
-                    "The specified port '{}' does not exist. Available ports: {}",
-                    port_name,
-                    if available_ports.is_empty() {
-                        "No available ports".to_string()
-                    } else {
-                        available_ports.join(", ")
-                    }
-                ))
+                return Ok(());
             }
+
+            // If the port doesn't exist, return an error and list all available ports
+            let available_ports: Vec<String> =
+                filtered_ports.iter().map(|p| p.port_name.clone()).collect();
+
+            bail!(
+                "The specified port '{}' does not exist. Available ports: {}",
+                port_name,
+                if available_ports.is_empty() {
+                    "No available ports".to_string()
+                } else {
+                    available_ports.join(", ")
+                }
+            )
         }
-        Err(e) => Err(format!("Failed to get available ports list: {}", e)),
+        Err(e) => Err(anyhow!("Failed to get available ports list: {}", e)),
     }
 }
 
-fn main() {
+fn main() -> Result<()> {
     // Initialize tracing, set log level from environment variable
     // Log level can be controlled by setting the RUST_LOG environment variable, e.g.:
     // RUST_LOG=debug, RUST_LOG=sftool_lib=trace, RUST_LOG=info
@@ -447,41 +421,29 @@ fn main() {
 
     // Load config file if specified
     let config = if let Some(ref config_path) = args.config {
-        match SfToolConfig::from_file(config_path) {
-            Ok(cfg) => {
-                if let Err(e) = cfg.validate() {
-                    eprintln!("Configuration validation failed: {}", e);
-                    process::exit(1);
-                }
-                Some(cfg)
-            }
-            Err(e) => {
-                eprintln!("Failed to load config file '{}': {}", config_path, e);
-                process::exit(1);
-            }
-        }
+        let cfg = SfToolConfig::from_file(config_path)
+            .map_err(|e| anyhow!("Failed to load config file '{}': {}", config_path, e))?;
+        cfg.validate().map_err(|e| {
+            anyhow!(
+                "Configuration validation failed for '{}': {}",
+                config_path,
+                e
+            )
+        })?;
+        Some(cfg)
     } else {
         None
     };
 
     // Merge CLI args with config file, CLI args take precedence
     let (chip_type, memory_type, port, baud, before, after, connect_attempts, compat, quiet) =
-        match merge_config(&args, config.clone()) {
-            Ok(merged) => merged,
-            Err(e) => {
-                eprintln!("Configuration error: {}", e);
-                process::exit(1);
-            }
-        };
+        merge_config(&args, config.clone()).context("Configuration error")?;
 
     // On macOS, convert /dev/tty.* to /dev/cu.*
     let port = normalize_mac_port_name(&port);
 
     // Check if the specified serial port exists, exit early if not
-    if let Err(e) = check_port_available(&port) {
-        eprintln!("Error: {}", e);
-        process::exit(1);
-    }
+    check_port_available(&port)?;
 
     let mut siflitool = create_sifli_tool(
         chip_type,
@@ -501,107 +463,87 @@ fn main() {
     );
 
     if baud != 1000000 {
-        siflitool.set_speed(baud).unwrap();
+        siflitool
+            .set_speed(baud)
+            .with_context(|| format!("Failed to set baud rate to {}", baud))?;
     }
 
     // Determine which command to execute
-    let command_source = match get_command_source(&args, config) {
-        Ok(cmd) => cmd,
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            process::exit(1);
-        }
-    };
+    let command_source = get_command_source(&args, config)?;
 
-    let res = match command_source {
-        CommandSource::Cli(command) => {
-            match command {
-                Commands::WriteFlash(params) => {
-                    // 在CLI中解析文件信息
-                    let mut files = Vec::new();
-                    for file_str in params.files.iter() {
-                        match sftool_lib::utils::Utils::parse_file_info(file_str) {
-                            Ok(mut parsed_files) => {
-                                files.append(&mut parsed_files);
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to parse file {}: {}", file_str, e);
-                                std::process::exit(1);
-                            }
-                        }
-                    }
-
-                    let write_params = sftool_lib::WriteFlashParams {
-                        files,
-                        verify: params.verify,
-                        no_compress: params.no_compress,
-                        erase_all: params.erase_all,
-                    };
-                    siflitool.write_flash(&write_params)
+    match command_source {
+        CommandSource::Cli(command) => match command {
+            Commands::WriteFlash(params) => {
+                let mut files = Vec::new();
+                for file_str in params.files.iter() {
+                    let mut parsed_files = sftool_lib::utils::Utils::parse_file_info(file_str)
+                        .with_context(|| format!("Failed to parse file {}", file_str))?;
+                    files.append(&mut parsed_files);
                 }
-                Commands::ReadFlash(params) => {
-                    // 在CLI中解析读取文件信息
-                    let mut files = Vec::new();
-                    for file_str in params.files.iter() {
-                        match sftool_lib::utils::Utils::parse_read_file_info(file_str) {
-                            Ok(parsed_file) => {
-                                files.push(parsed_file);
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to parse read file {}: {}", file_str, e);
-                                std::process::exit(1);
-                            }
-                        }
-                    }
 
-                    let read_params = sftool_lib::ReadFlashParams { files };
-                    siflitool.read_flash(&read_params)
-                }
-                Commands::EraseFlash(params) => {
-                    // 在CLI中解析擦除地址
-                    let address =
-                        match sftool_lib::utils::Utils::parse_erase_address(&params.address) {
-                            Ok(addr) => addr,
-                            Err(e) => {
-                                eprintln!(
-                                    "Failed to parse erase address {}: {}",
-                                    params.address, e
-                                );
-                                std::process::exit(1);
-                            }
-                        };
-
-                    let erase_params = sftool_lib::EraseFlashParams { address };
-                    siflitool.erase_flash(&erase_params)
-                }
-                Commands::EraseRegion(params) => {
-                    // 在CLI中解析擦除区域信息
-                    let mut regions = Vec::new();
-                    for region_str in params.region.iter() {
-                        match sftool_lib::utils::Utils::parse_erase_region(region_str) {
-                            Ok(parsed_region) => {
-                                regions.push(parsed_region);
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to parse erase region {}: {}", region_str, e);
-                                std::process::exit(1);
-                            }
-                        }
-                    }
-
-                    let erase_region_params = sftool_lib::EraseRegionParams { regions };
-                    siflitool.erase_region(&erase_region_params)
-                }
+                let write_params = sftool_lib::WriteFlashParams {
+                    files,
+                    verify: params.verify,
+                    no_compress: params.no_compress,
+                    erase_all: params.erase_all,
+                };
+                siflitool
+                    .write_flash(&write_params)
+                    .context("Failed to execute write_flash command")?;
             }
-        }
-        CommandSource::Config(config) => execute_config_command(&config, &mut siflitool),
-    };
+            Commands::ReadFlash(params) => {
+                let mut files = Vec::new();
+                for file_str in params.files.iter() {
+                    let parsed_file =
+                        sftool_lib::utils::Utils::parse_read_file_info(file_str)
+                            .with_context(|| {
+                                format!("Failed to parse read file {}", file_str)
+                            })?;
+                    files.push(parsed_file);
+                }
 
-    if let Err(e) = res {
-        eprintln!("Error: {:?}", e);
+                let read_params = sftool_lib::ReadFlashParams { files };
+                siflitool
+                    .read_flash(&read_params)
+                    .context("Failed to execute read_flash command")?;
+            }
+            Commands::EraseFlash(params) => {
+                let address = sftool_lib::utils::Utils::parse_erase_address(&params.address)
+                    .with_context(|| {
+                        format!("Failed to parse erase address {}", params.address)
+                    })?;
+
+                let erase_params = sftool_lib::EraseFlashParams { address };
+                siflitool
+                    .erase_flash(&erase_params)
+                    .context("Failed to execute erase_flash command")?;
+            }
+            Commands::EraseRegion(params) => {
+                let mut regions = Vec::new();
+                for region_str in params.region.iter() {
+                    let parsed_region = sftool_lib::utils::Utils::parse_erase_region(region_str)
+                        .with_context(|| {
+                            format!("Failed to parse erase region {}", region_str)
+                        })?;
+                    regions.push(parsed_region);
+                }
+
+                let erase_region_params = sftool_lib::EraseRegionParams { regions };
+                siflitool
+                    .erase_region(&erase_region_params)
+                    .context("Failed to execute erase_region command")?;
+            }
+        },
+        CommandSource::Config(config) => {
+            execute_config_command(&config, &mut siflitool)?;
+        }
     }
 
     if after != Operation::None {
-        siflitool.soft_reset().unwrap();
+        siflitool
+            .soft_reset()
+            .context("Failed to perform post-operation soft reset")?;
     }
+
+    Ok(())
 }
