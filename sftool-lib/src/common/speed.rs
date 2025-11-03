@@ -1,6 +1,5 @@
-use crate::common::ram_command::{Command, RamCommand};
+use crate::common::ram_command::{Command, RamCommand, RamOps};
 use crate::{Result, SifliToolTrait};
-use std::io::Write;
 use std::time::Duration;
 
 /// 通用的速度设置操作实现
@@ -15,7 +14,7 @@ impl SpeedOps {
         // 发送设置波特率命令
         tool.command(Command::SetBaud {
             baud: speed,
-            delay: 500,
+            delay: 100,
         })?;
 
         // 设置串口波特率
@@ -24,15 +23,9 @@ impl SpeedOps {
         // 等待一段时间让设置生效
         std::thread::sleep(Duration::from_millis(300));
 
-        // 发送回车换行测试连接
-        tool.port().write_all("\r\n".as_bytes())?;
-        tool.port().flush()?;
-
-        // 再等待一段时间
-        std::thread::sleep(Duration::from_millis(300));
-
-        // 清空缓冲区
         tool.port().clear(serialport::ClearBuffer::All)?;
+
+        RamOps::wait_for_shell_prompt(tool.port(), b"msh >", 200, 5)?;
 
         Ok(())
     }
