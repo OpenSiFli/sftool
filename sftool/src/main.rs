@@ -365,19 +365,14 @@ fn check_port_available(port_name: &str) -> Result<()> {
     match serialport::available_ports() {
         Ok(ports) => {
             // On macOS, only use /dev/cu.* ports, not /dev/tty.* ports
+            #[cfg(target_os = "macos")]
             let filtered_ports: Vec<_> = ports
                 .into_iter()
-                .filter(|p| {
-                    #[cfg(target_os = "macos")]
-                    {
-                        !p.port_name.starts_with("/dev/tty.")
-                    }
-                    #[cfg(not(target_os = "macos"))]
-                    {
-                        true
-                    }
-                })
+                .filter(|port| !port.port_name.starts_with("/dev/tty."))
                 .collect();
+
+            #[cfg(not(target_os = "macos"))]
+            let filtered_ports: Vec<_> = ports.into_iter().collect();
 
             // Check if the specified port is in the available list
             if filtered_ports.iter().any(|p| p.port_name == port_name) {
