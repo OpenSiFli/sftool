@@ -89,7 +89,7 @@ impl EraseOps {
         }
 
         let end_address = address + len - 1;
-        progress_bar.finish_with_message(&format!(
+        progress_bar.finish_with_message(format!(
             "Region erased successfully for 0x{:08X}..0x{:08X}",
             address, end_address
         ));

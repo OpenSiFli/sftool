@@ -18,4 +18,4 @@ pub static CHIP_FILE_NAME: phf::Map<&'static str, &'static str> = phf_map! {
 };
 
 // 签名公钥文件常量
-pub static SIG_PUB_FILE: &'static str = "58X_sig_pub.der";
+pub static SIG_PUB_FILE: &str = "58X_sig_pub.der";

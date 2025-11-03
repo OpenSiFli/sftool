@@ -114,22 +114,22 @@ impl ChipFrameFormat for SF32LB56FrameFormat {
     // SF32LB56 specific address mapping function
     fn map_address(addr: u32) -> u32 {
         let mut l_addr = addr;
-        if addr >= 0xE0000000 && addr < 0xF0000000 {
+        if (0xE0000000..0xF0000000).contains(&addr) {
             l_addr = (addr & 0x0fffffff) | 0xF0000000;
             // l_addr = addr
-        } else if addr >= 0x00400000 && addr <= 0x0041FFFF {
+        } else if (0x00400000..=0x0041FFFF).contains(&addr) {
             // L_RAM
             l_addr += 0x20000000;
-        } else if addr >= 0x20C00000 && addr <= 0x20C1FFFF {
+        } else if (0x20C00000..=0x20C1FFFF).contains(&addr) {
             // L_RAM
             l_addr -= 0x00800000;
-        } else if addr >= 0x20000000 && addr <= 0x200C7FFF {
+        } else if (0x20000000..=0x200C7FFF).contains(&addr) {
             // H_RAM
             l_addr += 0x0A000000;
-        } else if addr >= 0x20800000 && addr <= 0x20BFFFFF {
+        } else if (0x20800000..=0x20BFFFFF).contains(&addr) {
             // H_RAM
             l_addr -= 0x20800000;
-        } else if addr >= 0x10000000 && addr <= 0x1FFFFFFF {
+        } else if (0x10000000..=0x1FFFFFFF).contains(&addr) {
             // EXT_MEM
             l_addr += 0x50000000;
         }
@@ -295,11 +295,7 @@ impl SF32LB56Tool {
             }
             let value: Result<()> = match self.debug_command(SifliUartCommand::Enter) {
                 Ok(SifliUartResponse::Enter) => Ok(()),
-                _ => Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Failed to enter debug mode",
-                )
-                .into()),
+                _ => Err(std::io::Error::other("Failed to enter debug mode").into()),
             };
             // 如果有限重试，检查是否还有机会
             if let Some(ref mut attempts) = remaining_attempts {
@@ -324,7 +320,7 @@ impl SF32LB56Tool {
                 }
             }
         }
-        Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to connect to the chip").into())
+        Err(std::io::Error::other("Failed to connect to the chip").into())
     }
 
     pub fn download_stub_impl(&mut self) -> Result<()> {

@@ -277,7 +277,7 @@ impl SF32LB58Tool {
 
             // 每秒记录一次等待状态
             if elapsed > 0
-                && elapsed % 1000 == 0
+                && elapsed.is_multiple_of(1000)
                 && start_time.elapsed().unwrap()
                     > last_log_time.elapsed().unwrap() + Duration::from_secs(1)
             {
@@ -286,7 +286,7 @@ impl SF32LB58Tool {
             }
 
             let mut byte = [0];
-            if let Ok(_) = self.port.read_exact(&mut byte) {
+            if self.port.read_exact(&mut byte).is_ok() {
                 buffer.push(byte[0]);
 
                 // 检查是否收到"OK"响应
@@ -308,10 +308,10 @@ impl SF32LB58Tool {
                         elapsed,
                         response_str
                     );
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Received Fail response: {}", response_str),
-                    )
+                    return Err(std::io::Error::other(format!(
+                        "Received Fail response: {}",
+                        response_str
+                    ))
                     .into());
                 }
 

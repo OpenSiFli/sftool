@@ -81,26 +81,26 @@ impl ProgressCallback for IndicatifProgressCallback {
     }
 
     fn update_message(&self, id: ProgressId, message: String) {
-        if let Ok(bars) = self.progress_bars.lock() {
-            if let Some(bar) = bars.get(&id.0) {
-                bar.set_message(message);
-            }
+        if let Ok(bars) = self.progress_bars.lock()
+            && let Some(bar) = bars.get(&id.0)
+        {
+            bar.set_message(message);
         }
     }
 
     fn increment(&self, id: ProgressId, delta: u64) {
-        if let Ok(bars) = self.progress_bars.lock() {
-            if let Some(bar) = bars.get(&id.0) {
-                bar.inc(delta);
-            }
+        if let Ok(bars) = self.progress_bars.lock()
+            && let Some(bar) = bars.get(&id.0)
+        {
+            bar.inc(delta);
         }
     }
 
     fn finish(&self, id: ProgressId, final_message: String) {
-        if let Ok(mut bars) = self.progress_bars.lock() {
-            if let Some(bar) = bars.remove(&id.0) {
-                bar.finish_with_message(final_message);
-            }
+        if let Ok(mut bars) = self.progress_bars.lock()
+            && let Some(bar) = bars.remove(&id.0)
+        {
+            bar.finish_with_message(final_message);
         }
     }
 }

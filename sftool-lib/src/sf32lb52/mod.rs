@@ -142,11 +142,7 @@ impl SF32LB52Tool {
             }
             let value: Result<()> = match self.debug_command(SifliUartCommand::Enter) {
                 Ok(SifliUartResponse::Enter) => Ok(()),
-                _ => Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Failed to enter debug mode",
-                )
-                .into()),
+                _ => Err(std::io::Error::other("Failed to enter debug mode").into()),
             };
             // 如果有限重试，检查是否还有机会
             if let Some(ref mut attempts) = remaining_attempts {
@@ -171,7 +167,7 @@ impl SF32LB52Tool {
                 }
             }
         }
-        Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to connect to the chip").into())
+        Err(std::io::Error::other("Failed to connect to the chip").into())
     }
 
     fn download_stub_impl(&mut self) -> Result<()> {
