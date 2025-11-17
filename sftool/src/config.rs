@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sftool_lib::{ChipType, Operation};
+use sftool_lib::{AfterOperation, BeforeOperation, ChipType};
 
 /// 应用程序的默认配置值
 pub struct Defaults;
@@ -162,22 +162,21 @@ impl SfToolConfig {
         }
     }
 
-    /// 将字符串转换为 Operation 枚举
-    pub fn parse_before(&self) -> Result<Operation, String> {
+    /// 将字符串转换为 before 操作枚举
+    pub fn parse_before(&self) -> Result<BeforeOperation, String> {
         match self.before.as_str() {
-            "no_reset" => Ok(Operation::None),
-            "soft_reset" => Ok(Operation::SoftReset),
-            "default_reset" => Ok(Operation::DefaultReset),
+            "default_reset" => Ok(BeforeOperation::DefaultReset),
+            "no_reset" => Ok(BeforeOperation::NoReset),
+            "no_reset_no_sync" => Ok(BeforeOperation::NoResetNoSync),
             _ => Err(format!("Invalid before operation: {}", self.before)),
         }
     }
 
-    /// 将字符串转换为 Operation 枚举
-    pub fn parse_after(&self) -> Result<Operation, String> {
+    /// 将字符串转换为 after 操作枚举
+    pub fn parse_after(&self) -> Result<AfterOperation, String> {
         match self.after.as_str() {
-            "no_reset" => Ok(Operation::None),
-            "soft_reset" => Ok(Operation::SoftReset),
-            "default_reset" => Ok(Operation::DefaultReset),
+            "no_reset" => Ok(AfterOperation::NoReset),
+            "soft_reset" => Ok(AfterOperation::SoftReset),
             _ => Err(format!("Invalid after operation: {}", self.after)),
         }
     }

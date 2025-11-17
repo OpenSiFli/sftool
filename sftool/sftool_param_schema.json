@@ -26,13 +26,13 @@
     },
     "before": {
       "type": "string",
-      "enum": [ "no_reset", "soft_reset", "default_reset" ],
+      "enum": [ "default_reset", "no_reset", "no_reset_no_sync" ],
       "default": "default_reset",
       "description": "Action before connecting to the chip"
     },
     "after": {
       "type": "string",
-      "enum": [ "no_reset", "soft_reset", "default_reset" ],
+      "enum": [ "no_reset", "soft_reset" ],
       "default": "soft_reset",
       "description": "Action after sftool finishes"
     },

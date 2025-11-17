@@ -123,7 +123,6 @@ impl SF32LB52Tool {
     }
 
     fn attempt_connect(&mut self) -> Result<()> {
-        use crate::Operation;
         use crate::common::sifli_debug::{SifliUartCommand, SifliUartResponse};
 
         let infinite_attempts = self.base.connect_attempts <= 0;
@@ -133,7 +132,7 @@ impl SF32LB52Tool {
             Some(self.base.connect_attempts)
         };
         loop {
-            if self.base.before == Operation::DefaultReset {
+            if self.base.before.requires_reset() {
                 // 使用RTS引脚复位
                 self.port.write_request_to_send(true)?;
                 std::thread::sleep(Duration::from_millis(100));
@@ -280,7 +279,9 @@ impl SifliTool for SF32LB52Tool {
         std::thread::sleep(Duration::from_millis(100));
 
         let mut tool = Box::new(Self { base, port });
-        tool.download_stub().expect("Failed to download stub");
+        if tool.base.before.should_download_stub() {
+            tool.download_stub().expect("Failed to download stub");
+        }
         tool
     }
 }

@@ -340,7 +340,9 @@ impl SifliTool for SF32LB58Tool {
         std::thread::sleep(Duration::from_millis(100));
 
         let mut tool = Box::new(Self { base, port });
-        tool.download_stub().expect("Failed to download stub");
+        if tool.base.before.should_download_stub() {
+            tool.download_stub().expect("Failed to download stub");
+        }
         tool
     }
 }

@@ -55,8 +55,8 @@ sftool [OPTIONS] COMMAND [COMMAND OPTIONS]
 - `-m, --memory <MEMORY>`: Storage type [nor, nand, sd] (default: nor)
 - `-p, --port <PORT>`: Serial port device path
 - `-b, --baud <BAUD>`: Baud rate used for flashing/reading (default: 1000000)
-- `--before <OPERATION>`: Operation before connecting to the chip [no_reset, soft_reset] (default: no_reset)
-- `--after <OPERATION>`: Operation after the tool completes [no_reset, soft_reset] (default: soft_reset)
+- `--before <OPERATION>`: Operation before connecting to the chip [default_reset, no_reset, no_reset_no_sync] (default: default_reset)
+- `--after <OPERATION>`: Operation after the tool completes [soft_reset, no_reset] (default: soft_reset)
 - `--connect-attempts <ATTEMPTS>`: Number of connection attempts, negative or 0 means infinite (default: 7)
 - `--compat` : Compatibility mode, should be turned on if timeout errors or verification failures occur frequently after downloading.
 

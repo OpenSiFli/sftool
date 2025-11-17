@@ -31,13 +31,38 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
-pub enum Operation {
-    #[cfg_attr(feature = "cli", clap(name = "no_reset"))]
-    None,
-    #[cfg_attr(feature = "cli", clap(name = "soft_reset"))]
-    SoftReset,
+pub enum BeforeOperation {
     #[cfg_attr(feature = "cli", clap(name = "default_reset"))]
     DefaultReset,
+    #[cfg_attr(feature = "cli", clap(name = "no_reset"))]
+    NoReset,
+    #[cfg_attr(feature = "cli", clap(name = "no_reset_no_sync"))]
+    NoResetNoSync,
+}
+
+impl BeforeOperation {
+    pub fn requires_reset(&self) -> bool {
+        matches!(self, Self::DefaultReset)
+    }
+
+    pub fn should_download_stub(&self) -> bool {
+        !matches!(self, Self::NoResetNoSync)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+pub enum AfterOperation {
+    #[cfg_attr(feature = "cli", clap(name = "no_reset"))]
+    NoReset,
+    #[cfg_attr(feature = "cli", clap(name = "soft_reset"))]
+    SoftReset,
+}
+
+impl AfterOperation {
+    pub fn requires_soft_reset(&self) -> bool {
+        matches!(self, Self::SoftReset)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +79,7 @@ pub enum ChipType {
 #[derive(Clone)]
 pub struct SifliToolBase {
     pub port_name: String,
-    pub before: Operation,
+    pub before: BeforeOperation,
     pub memory_type: String,
     pub baud: u32,
     pub connect_attempts: i8,
@@ -67,7 +92,7 @@ impl SifliToolBase {
     /// 创建一个使用默认空进度回调的 SifliToolBase
     pub fn new_with_no_progress(
         port_name: String,
-        before: Operation,
+        before: BeforeOperation,
         memory_type: String,
         baud: u32,
         connect_attempts: i8,
@@ -90,7 +115,7 @@ impl SifliToolBase {
     /// 创建一个使用自定义进度回调的 SifliToolBase
     pub fn new_with_progress(
         port_name: String,
-        before: Operation,
+        before: BeforeOperation,
         memory_type: String,
         baud: u32,
         connect_attempts: i8,
