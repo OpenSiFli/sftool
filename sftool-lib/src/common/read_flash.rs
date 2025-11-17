@@ -1,8 +1,13 @@
 use crate::common::ram_command::{Command, RamCommand};
+use crate::progress::ProgressHandler;
 use crate::utils::Utils;
 use crate::{Error, Result, SifliToolTrait};
+use crc::{Algorithm, Crc};
+use serialport::SerialPort;
+use std::collections::VecDeque;
 use std::fs::File;
-use std::io::{Read, Seek, Write};
+use std::io::{ErrorKind, Read, Seek, Write};
+use std::time::Instant;
 use tempfile::tempfile;
 
 /// 通用的Flash读取文件结构
@@ -17,6 +22,20 @@ pub struct ReadFlashFile {
 pub struct FlashReader;
 
 impl FlashReader {
+    const START_TRANS_MARKER: &'static [u8] = b"start_trans\r\n";
+    const READ_TIMEOUT_MS: u128 = 10_000;
+    const READ_CHUNK_SIZE: usize = 16 * 1024;
+    const CRC_32_ALGO: Algorithm<u32> = Algorithm {
+        width: 32,
+        poly: 0x04C11DB7,
+        init: 0,
+        refin: true,
+        refout: true,
+        xorout: 0,
+        check: 0,
+        residue: 0,
+    };
+
     /// 解析读取文件信息 (filename@address:size格式)
     pub fn parse_file_info(file_spec: &str) -> Result<ReadFlashFile> {
         let Some((file_path, addr_size)) = file_spec.split_once('@') else {
@@ -58,64 +77,217 @@ impl FlashReader {
         let progress_bar =
             progress.create_bar(size as u64, format!("Reading from 0x{:08X}...", address));
 
-        // 创建临时文件
         let mut temp_file = tempfile()?;
-        let packet_size = 128 * 1024; // 128KB chunks
-        let mut remaining = size;
-        let mut current_address = address;
 
-        while remaining > 0 {
-            let chunk_size = std::cmp::min(remaining, packet_size);
+        // 读取一次即可，由设备负责连续发送数据
+        tool.command(Command::Read { address, len: size })?;
 
-            // 发送读取命令
-            let _ = tool.command(Command::Read {
-                address: current_address,
-                len: chunk_size,
+        let (expected_crc, actual_crc) = {
+            let port = tool.port();
+
+            Self::wait_for_marker(port, Self::START_TRANS_MARKER, "start_trans marker")?;
+
+            let actual_crc =
+                Self::receive_payload(port, size, &mut temp_file, &progress_bar, address)?;
+
+            let expected_crc = Self::read_crc_value(port)?;
+            Self::expect_ok(port)?;
+
+            (expected_crc, actual_crc)
+        };
+
+        if actual_crc != expected_crc {
+            return Err(Error::CrcMismatch {
+                expected: expected_crc,
+                actual: actual_crc,
             });
-
-            // 读取数据
-            let mut buffer = vec![0u8; chunk_size as usize];
-            let mut total_read = 0;
-            let start_time = std::time::SystemTime::now();
-
-            while total_read < chunk_size {
-                let remaining_in_chunk = chunk_size - total_read;
-                let mut chunk_buffer = vec![0u8; remaining_in_chunk as usize];
-
-                match tool.port().read_exact(&mut chunk_buffer) {
-                    Ok(_) => {
-                        buffer[total_read as usize..(total_read + remaining_in_chunk) as usize]
-                            .copy_from_slice(&chunk_buffer);
-                        total_read += remaining_in_chunk;
-                    }
-                    Err(_) => {
-                        // 超时检查
-                        if start_time.elapsed().unwrap().as_millis() > 10000 {
-                            return Err(Error::timeout(format!(
-                                "reading flash at 0x{:08X}",
-                                current_address
-                            )));
-                        }
-                        continue;
-                    }
-                }
-            }
-
-            // 写入临时文件
-            temp_file.write_all(&buffer)?;
-
-            remaining -= chunk_size;
-            current_address += chunk_size;
-
-            progress_bar.inc(chunk_size as u64);
         }
 
         progress_bar.finish_with_message("Read complete");
 
-        // 将临时文件内容写入目标文件
         temp_file.seek(std::io::SeekFrom::Start(0))?;
         let mut output_file = File::create(output_path)?;
         std::io::copy(&mut temp_file, &mut output_file)?;
+
+        Ok(())
+    }
+
+    fn wait_for_marker(port: &mut Box<dyn SerialPort>, marker: &[u8], context: &str) -> Result<()> {
+        if marker.is_empty() {
+            return Ok(());
+        }
+
+        let mut window = VecDeque::with_capacity(marker.len());
+        let mut last_activity = Instant::now();
+
+        loop {
+            let mut byte = [0u8; 1];
+            match port.read(&mut byte) {
+                Ok(0) => {
+                    if last_activity.elapsed().as_millis() > Self::READ_TIMEOUT_MS {
+                        return Err(Error::timeout(format!("waiting for {}", context)));
+                    }
+                }
+                Ok(_) => {
+                    last_activity = Instant::now();
+                    window.push_back(byte[0]);
+                    if window.len() > marker.len() {
+                        window.pop_front();
+                    }
+                    if window.len() == marker.len()
+                        && window.iter().copied().eq(marker.iter().copied())
+                    {
+                        return Ok(());
+                    }
+                }
+                Err(e) if matches!(e.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) => {
+                    if last_activity.elapsed().as_millis() > Self::READ_TIMEOUT_MS {
+                        return Err(Error::timeout(format!("waiting for {}", context)));
+                    }
+                }
+                Err(e) if e.kind() == ErrorKind::Interrupted => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
+    }
+
+    fn receive_payload(
+        port: &mut Box<dyn SerialPort>,
+        size: u32,
+        temp_file: &mut File,
+        progress_bar: &ProgressHandler,
+        address: u32,
+    ) -> Result<u32> {
+        let mut remaining = size as usize;
+        let buffer_len = remaining.clamp(1usize, Self::READ_CHUNK_SIZE);
+        let mut buffer = vec![0u8; buffer_len];
+
+        let crc = Crc::<u32>::new(&Self::CRC_32_ALGO);
+        let mut digest = crc.digest();
+        let mut processed = 0usize;
+
+        while remaining > 0 {
+            let chunk_len = std::cmp::min(buffer.len(), remaining);
+            let chunk = &mut buffer[..chunk_len];
+            let current_address = address.saturating_add(processed as u32);
+            Self::read_exact_with_timeout(
+                port,
+                chunk,
+                Self::READ_TIMEOUT_MS,
+                &format!("reading flash at 0x{:08X}", current_address),
+            )?;
+
+            temp_file.write_all(chunk)?;
+            digest.update(chunk);
+
+            remaining -= chunk_len;
+            processed += chunk_len;
+            progress_bar.inc(chunk_len as u64);
+        }
+
+        Ok(digest.finalize())
+    }
+
+    fn read_crc_value(port: &mut Box<dyn SerialPort>) -> Result<u32> {
+        let line = Self::read_non_empty_line(port, "CRC response")?;
+        let lower = line.to_ascii_lowercase();
+        let prefix = "crc:0x";
+
+        if !lower.starts_with(prefix) {
+            return Err(Error::protocol(format!("unexpected CRC line: {}", line)));
+        }
+
+        let hex_part = &line[prefix.len()..];
+        u32::from_str_radix(hex_part, 16)
+            .map_err(|e| Error::protocol(format!("invalid CRC '{}': {}", line, e)))
+    }
+
+    fn expect_ok(port: &mut Box<dyn SerialPort>) -> Result<()> {
+        let line = Self::read_non_empty_line(port, "OK response")?;
+        if line != "OK" {
+            return Err(Error::protocol(format!("unexpected response: {}", line)));
+        }
+        Ok(())
+    }
+
+    fn read_non_empty_line(port: &mut Box<dyn SerialPort>, context: &str) -> Result<String> {
+        loop {
+            let line = Self::read_line(port, context)?;
+            let trimmed = line.trim().to_string();
+            if trimmed.is_empty() {
+                continue;
+            }
+            return Ok(trimmed);
+        }
+    }
+
+    fn read_line(port: &mut Box<dyn SerialPort>, context: &str) -> Result<String> {
+        let mut buffer = Vec::new();
+        let mut last_activity = Instant::now();
+
+        loop {
+            let mut byte = [0u8; 1];
+            match port.read(&mut byte) {
+                Ok(0) => {
+                    if last_activity.elapsed().as_millis() > Self::READ_TIMEOUT_MS {
+                        return Err(Error::timeout(format!("waiting for {}", context)));
+                    }
+                }
+                Ok(_) => {
+                    last_activity = Instant::now();
+                    match byte[0] {
+                        b'\n' => break,
+                        b'\r' => continue,
+                        ch => buffer.push(ch),
+                    }
+                }
+                Err(e) if matches!(e.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) => {
+                    if last_activity.elapsed().as_millis() > Self::READ_TIMEOUT_MS {
+                        return Err(Error::timeout(format!("waiting for {}", context)));
+                    }
+                }
+                Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        Ok(String::from_utf8_lossy(&buffer).into_owned())
+    }
+
+    fn read_exact_with_timeout(
+        port: &mut Box<dyn SerialPort>,
+        buf: &mut [u8],
+        timeout_ms: u128,
+        context: &str,
+    ) -> Result<()> {
+        if buf.is_empty() {
+            return Ok(());
+        }
+
+        let mut offset = 0;
+        let mut last_activity = Instant::now();
+
+        while offset < buf.len() {
+            match port.read(&mut buf[offset..]) {
+                Ok(0) => {
+                    if last_activity.elapsed().as_millis() > timeout_ms {
+                        return Err(Error::timeout(format!("waiting for {}", context)));
+                    }
+                }
+                Ok(n) => {
+                    offset += n;
+                    last_activity = Instant::now();
+                    tracing::debug!("")
+                }
+                Err(e) if matches!(e.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) => {
+                    if last_activity.elapsed().as_millis() > timeout_ms {
+                        return Err(Error::timeout(format!("waiting for {}", context)));
+                    }
+                }
+                Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+                Err(e) => return Err(e.into()),
+            }
+        }
 
         Ok(())
     }
