@@ -14,14 +14,14 @@ impl SpeedOps {
         // 发送设置波特率命令
         tool.command(Command::SetBaud {
             baud: speed,
-            delay: 100,
+            delay: 10,
         })?;
+
+        // 等待一段时间让设置生效
+        std::thread::sleep(Duration::from_millis(50));
 
         // 设置串口波特率
         tool.port().set_baud_rate(speed)?;
-
-        // 等待一段时间让设置生效
-        std::thread::sleep(Duration::from_millis(300));
 
         tool.port().clear(serialport::ClearBuffer::All)?;
 

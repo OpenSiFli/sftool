@@ -277,7 +277,6 @@ impl FlashReader {
                 Ok(n) => {
                     offset += n;
                     last_activity = Instant::now();
-                    tracing::debug!("")
                 }
                 Err(e) if matches!(e.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) => {
                     if last_activity.elapsed().as_millis() > timeout_ms {
