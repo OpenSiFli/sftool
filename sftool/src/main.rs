@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand, ValueEnum};
-use sftool_lib::{ChipType, Operation, SifliToolBase, create_sifli_tool};
+use sftool_lib::{AfterOperation, BeforeOperation, ChipType, SifliToolBase, create_sifli_tool};
 use strum::{Display, EnumString};
 
 mod config;
@@ -14,8 +14,8 @@ type MergedConfig = (
     String,
     String,
     u32,
-    Operation,
-    Operation,
+    BeforeOperation,
+    AfterOperation,
     i8,
     bool,
     bool,
@@ -162,11 +162,11 @@ struct Cli {
 
     /// What to do before connecting to the chip (default: default_reset)
     #[arg(long = "before", value_enum)]
-    before: Option<Operation>,
+    before: Option<BeforeOperation>,
 
     /// What to do after siflitool is finished (default: soft_reset)
     #[arg(long = "after", value_enum)]
-    after: Option<Operation>,
+    after: Option<AfterOperation>,
 
     /// Number of attempts to connect, negative or 0 for infinite (default: 3)
     #[arg(long = "connect-attempts")]
@@ -520,7 +520,7 @@ fn main() -> Result<()> {
         }
     }
 
-    if after != Operation::None {
+    if after.requires_soft_reset() {
         siflitool
             .soft_reset()
             .context("Failed to perform post-operation soft reset")?;

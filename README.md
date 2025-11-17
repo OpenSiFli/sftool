@@ -53,8 +53,8 @@ sftool [选项] 命令 [命令选项]
 - `-m, --memory <MEMORY>`: 存储类型 [nor, nand, sd] (默认: nor)
 - `-p, --port <PORT>`: 串行端口设备路径
 - `-b, --baud <BAUD>`: 闪存/读取时使用的串口波特率 (默认: 1000000)
-- `--before <OPERATION>`: 连接芯片前的操作 [no_reset, soft_reset] (默认: no_reset)
-- `--after <OPERATION>`: 工具完成后的操作 [no_reset, soft_reset] (默认: soft_reset)
+- `--before <OPERATION>`: 连接芯片前的操作 [default_reset, no_reset, no_reset_no_sync] (默认: default_reset)
+- `--after <OPERATION>`: 工具完成后的操作 [soft_reset, no_reset] (默认: soft_reset)
 - `--connect-attempts <ATTEMPTS>`: 连接尝试次数，负数或0表示无限次 (默认: 7)
 - `--compat` : 兼容模式，如果经常出现超时错误或下载后校验失败，则应打开此选项。
 
