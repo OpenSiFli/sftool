@@ -16,6 +16,7 @@ pub mod common;
 
 // 芯片特定的实现模块
 pub mod sf32lb52;
+pub mod sf32lb55;
 pub mod sf32lb56;
 pub mod sf32lb58;
 
@@ -70,6 +71,8 @@ impl AfterOperation {
 pub enum ChipType {
     #[cfg_attr(feature = "cli", clap(name = "SF32LB52"))]
     SF32LB52,
+    #[cfg_attr(feature = "cli", clap(name = "SF32LB55"))]
+    SF32LB55,
     #[cfg_attr(feature = "cli", clap(name = "SF32LB56"))]
     SF32LB56,
     #[cfg_attr(feature = "cli", clap(name = "SF32LB58"))]
@@ -206,6 +209,7 @@ pub trait SifliTool:
 pub fn create_sifli_tool(chip_type: ChipType, base_param: SifliToolBase) -> Box<dyn SifliTool> {
     match chip_type {
         ChipType::SF32LB52 => sf32lb52::SF32LB52Tool::create_tool(base_param),
+        ChipType::SF32LB55 => sf32lb55::SF32LB55Tool::create_tool(base_param),
         ChipType::SF32LB56 => sf32lb56::SF32LB56Tool::create_tool(base_param),
         ChipType::SF32LB58 => sf32lb58::SF32LB58Tool::create_tool(base_param),
     }

@@ -1,0 +1,27 @@
+use crate::Result;
+use crate::common::ram_command::{CommandConfig, RamOps};
+use crate::sf32lb55::SF32LB55Tool;
+
+// 重新导出公共类型
+pub use crate::common::ram_command::{Command, DownloadStub, RamCommand, Response};
+
+impl RamCommand for SF32LB55Tool {
+    fn command(&mut self, cmd: Command) -> Result<Response> {
+        RamOps::send_command_and_wait_response(&mut self.port, cmd, self.base.memory_type.as_str())
+    }
+
+    fn send_data(&mut self, data: &[u8]) -> Result<Response> {
+        let config = CommandConfig {
+            compat_mode: self.base.compat,
+            ..Default::default()
+        };
+        RamOps::send_data_and_wait_response(&mut self.port, data, &config)
+    }
+}
+
+impl DownloadStub for SF32LB55Tool {
+    fn download_stub(&mut self) -> Result<()> {
+        // Use SifliTool trait methods
+        self.download_stub_impl()
+    }
+}
