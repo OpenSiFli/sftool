@@ -171,7 +171,7 @@ impl SF32LB52Tool {
 
     fn download_stub_impl(&mut self) -> Result<()> {
         use crate::common::sifli_debug::SifliUartCommand;
-        use crate::ram_stub::{self, CHIP_FILE_NAME};
+        use crate::ram_stub::load_stub_file;
         use probe_rs::MemoryMappedRegister;
         use probe_rs::architecture::arm::core::armv7m::{Aircr, Demcr};
         use probe_rs::architecture::arm::core::registers::cortex_m::{PC, SP};
@@ -206,19 +206,15 @@ impl SF32LB52Tool {
         self.debug_write_word32(Demcr::get_mmio_address() as u32, demcr.into())?;
 
         std::thread::sleep(std::time::Duration::from_millis(100));
-        // 2. Download stub
-        let stub = ram_stub::RamStubFile::get(
-            CHIP_FILE_NAME
-                .get(format!("sf32lb52_{}", self.base.memory_type).as_str())
-                .expect("REASON"),
-        );
-        let Some(stub) = stub else {
-            spinner.finish_with_message("No stub file found for the given chip and memory type");
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "No stub file found for the given chip and memory type",
-            )
-            .into());
+        // 2. Download stub - 支持外部 stub 文件
+        let chip_memory_key = format!("sf32lb52_{}", self.base.memory_type);
+        let stub = match load_stub_file(self.base.external_stub_path.as_deref(), &chip_memory_key) {
+            Ok(s) => s,
+            Err(e) => {
+                spinner
+                    .finish_with_message("No stub file found for the given chip and memory type");
+                return Err(e.into());
+            }
         };
 
         let packet_size = if self.base.compat { 256 } else { 64 * 1024 };

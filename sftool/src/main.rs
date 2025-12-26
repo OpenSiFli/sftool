@@ -19,6 +19,7 @@ type MergedConfig = (
     i8,
     bool,
     bool,
+    Option<String>, // stub path
 );
 
 /// Convert config file WriteFlashFileConfig to string format expected by CLI
@@ -176,6 +177,10 @@ struct Cli {
     #[arg(long = "compat")]
     compat: Option<bool>,
 
+    /// External stub file path (overrides embedded stub)
+    #[arg(long = "stub")]
+    stub: Option<String>,
+
     /// Suppress progress bar output (default: false)
     #[arg(short = 'q', long = "quiet")]
     quiet: bool,
@@ -299,6 +304,7 @@ fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<MergedConfig
         .unwrap_or(base_config.connect_attempts);
     let compat = args.compat.unwrap_or(base_config.compat);
     let quiet = args.quiet;
+    let stub = args.stub.clone().or_else(|| base_config.stub.clone());
     // 验证必需字段
     if port.is_empty() {
         bail!("Port must be specified either via --port or in config file");
@@ -314,6 +320,7 @@ fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<MergedConfig
         connect_attempts,
         compat,
         quiet,
+        stub,
     ))
 }
 
@@ -424,7 +431,7 @@ fn main() -> Result<()> {
     };
 
     // Merge CLI args with config file, CLI args take precedence
-    let (chip_type, memory_type, port, baud, before, after, connect_attempts, compat, quiet) =
+    let (chip_type, memory_type, port, baud, before, after, connect_attempts, compat, quiet, stub) =
         merge_config(&args, config.clone()).context("Configuration error")?;
 
     // On macOS, convert /dev/tty.* to /dev/cu.*
@@ -435,7 +442,7 @@ fn main() -> Result<()> {
 
     let mut siflitool = create_sifli_tool(
         chip_type,
-        SifliToolBase::new_with_progress(
+        SifliToolBase::new_with_external_stub(
             port.clone(),
             before,
             memory_type.to_lowercase(),
@@ -447,6 +454,7 @@ fn main() -> Result<()> {
             } else {
                 create_indicatif_progress_callback()
             },
+            stub,
         ),
     );
 

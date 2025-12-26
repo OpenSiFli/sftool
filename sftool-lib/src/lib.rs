@@ -89,6 +89,8 @@ pub struct SifliToolBase {
     pub compat: bool,
     pub progress_callback: ProgressCallbackArc,
     pub progress_helper: Arc<ProgressHelper>,
+    /// 外部 stub 文件路径，如果指定则优先使用外部文件而非内嵌文件
+    pub external_stub_path: Option<String>,
 }
 
 impl SifliToolBase {
@@ -112,6 +114,7 @@ impl SifliToolBase {
             compat,
             progress_callback,
             progress_helper,
+            external_stub_path: None,
         }
     }
 
@@ -135,6 +138,32 @@ impl SifliToolBase {
             compat,
             progress_callback,
             progress_helper,
+            external_stub_path: None,
+        }
+    }
+
+    /// 创建一个使用自定义进度回调和外部 stub 文件的 SifliToolBase
+    pub fn new_with_external_stub(
+        port_name: String,
+        before: BeforeOperation,
+        memory_type: String,
+        baud: u32,
+        connect_attempts: i8,
+        compat: bool,
+        progress_callback: ProgressCallbackArc,
+        external_stub_path: Option<String>,
+    ) -> Self {
+        let progress_helper = Arc::new(ProgressHelper::new(progress_callback.clone(), 0));
+        Self {
+            port_name,
+            before,
+            memory_type,
+            baud,
+            connect_attempts,
+            compat,
+            progress_callback,
+            progress_helper,
+            external_stub_path,
         }
     }
 }

@@ -80,7 +80,7 @@ impl SF32LB55Tool {
     }
 
     fn download_stub_impl(&mut self) -> Result<()> {
-        use crate::ram_stub::{self, CHIP_FILE_NAME, SIG_PUB_FILE};
+        use crate::ram_stub::{self, SIG_PUB_FILE, load_stub_file};
 
         tracing::info!("Starting SF32LB55 stub download process");
         self.port.clear(serialport::ClearBuffer::All)?;
@@ -101,31 +101,9 @@ impl SF32LB55Tool {
         spinner.set_message("Downloading signature key...");
         self.download_boot_patch_sigkey(&sig_pub_data.data)?;
 
-        // 2. 下载RAM stub文件
-        let memory_type_key = format!("sf32lb55_{}", self.base.memory_type);
-        tracing::debug!("Looking for stub file with key: {}", memory_type_key);
-
-        let stub_file_name = CHIP_FILE_NAME
-            .get(memory_type_key.as_str())
-            .ok_or_else(|| {
-                tracing::error!("No stub file found for chip type: {}", memory_type_key);
-                std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    format!(
-                        "No stub file found for the given chip and memory type: {}",
-                        memory_type_key
-                    ),
-                )
-            })?;
-
-        tracing::debug!("Loading RAM stub file: {}", stub_file_name);
-        let stub = ram_stub::RamStubFile::get(stub_file_name).ok_or_else(|| {
-            tracing::error!("Stub file not found: {}", stub_file_name);
-            std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("Stub file not found: {}", stub_file_name),
-            )
-        })?;
+        // 2. 下载RAM stub文件 - 支持外部 stub 文件
+        let chip_memory_key = format!("sf32lb55_{}", self.base.memory_type);
+        let stub = load_stub_file(self.base.external_stub_path.as_deref(), &chip_memory_key)?;
 
         spinner.set_message("Downloading RAM stub...");
 
