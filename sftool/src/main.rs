@@ -326,6 +326,7 @@ fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<MergedConfig
 
 /// Determine which command to execute from CLI args or config file
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 enum CommandSource {
     Cli(Commands),
     Config(SfToolConfig),

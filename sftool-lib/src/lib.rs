@@ -143,6 +143,7 @@ impl SifliToolBase {
     }
 
     /// 创建一个使用自定义进度回调和外部 stub 文件的 SifliToolBase
+    #[allow(clippy::too_many_arguments)]
     pub fn new_with_external_stub(
         port_name: String,
         before: BeforeOperation,
