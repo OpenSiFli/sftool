@@ -31,6 +31,23 @@ use crate::progress::{ProgressCallbackArc, ProgressHelper, no_op_progress_callba
 use serialport::SerialPort;
 use std::sync::Arc;
 
+/// Load stub image bytes for the given chip and memory type.
+pub fn load_stub_bytes(
+    external_path: Option<&str>,
+    chip_type: ChipType,
+    memory_type: &str,
+) -> Result<Vec<u8>> {
+    let chip_key = match chip_type {
+        ChipType::SF32LB52 => "sf32lb52",
+        ChipType::SF32LB55 => "sf32lb55",
+        ChipType::SF32LB56 => "sf32lb56",
+        ChipType::SF32LB58 => "sf32lb58",
+    };
+    let key = format!("{}_{}", chip_key, memory_type.to_lowercase());
+    let stub = ram_stub::load_stub_file(external_path, &key)?;
+    Ok(stub.data.into_owned())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
 pub enum BeforeOperation {
