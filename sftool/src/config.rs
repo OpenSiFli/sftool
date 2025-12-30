@@ -105,6 +105,17 @@ pub struct StubReadCommandConfig {
     pub output: Option<String>,
 }
 
+/// Stub 命令配置（write/clear/read 三选一）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StubCommandConfig {
+    #[serde(default)]
+    pub write: Option<StubWriteCommandConfig>,
+    #[serde(default)]
+    pub clear: Option<StubClearCommandConfig>,
+    #[serde(default)]
+    pub read: Option<StubReadCommandConfig>,
+}
+
 /// JSON 配置文件的根结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SfToolConfig {
@@ -128,16 +139,14 @@ pub struct SfToolConfig {
     pub quiet: bool,
     /// 外部 stub 文件路径，如果指定则优先使用外部文件而非内嵌文件
     #[serde(default)]
-    pub stub: Option<String>,
+    pub stub_path: Option<String>,
 
     // 命令 - 只能存在其中一个
     pub write_flash: Option<WriteFlashCommandConfig>,
     pub read_flash: Option<ReadFlashCommandConfig>,
     pub erase_flash: Option<EraseFlashCommandConfig>,
     pub erase_region: Option<EraseRegionCommandConfig>,
-    pub stub_write: Option<StubWriteCommandConfig>,
-    pub stub_clear: Option<StubClearCommandConfig>,
-    pub stub_read: Option<StubReadCommandConfig>,
+    pub stub: Option<StubCommandConfig>,
 }
 
 // 默认值函数 - 使用统一的 Defaults 常量
@@ -180,14 +189,12 @@ impl SfToolConfig {
             connect_attempts: Defaults::CONNECT_ATTEMPTS,
             compat: Defaults::COMPAT,
             quiet: false,
-            stub: None,
+            stub_path: None,
             write_flash: None,
             read_flash: None,
             erase_flash: None,
             erase_region: None,
-            stub_write: None,
-            stub_clear: None,
-            stub_read: None,
+            stub: None,
         }
     }
 
@@ -224,40 +231,58 @@ impl SfToolConfig {
     /// 验证配置的有效性
     pub fn validate(&self) -> Result<(), String> {
         // 检查是否恰好有一个命令
+        let stub_sub_count = self
+            .stub
+            .as_ref()
+            .map(|stub| {
+                [
+                    stub.write.is_some(),
+                    stub.clear.is_some(),
+                    stub.read.is_some(),
+                ]
+                .iter()
+                .filter(|&&x| x)
+                .count()
+            })
+            .unwrap_or(0);
+
+        let stub_command = if stub_sub_count > 0 { 1 } else { 0 };
+
         let command_count = [
             self.write_flash.is_some(),
             self.read_flash.is_some(),
             self.erase_flash.is_some(),
             self.erase_region.is_some(),
-            self.stub_write.is_some(),
-            self.stub_clear.is_some(),
-            self.stub_read.is_some(),
         ]
         .iter()
         .filter(|&&x| x)
-        .count();
+        .count()
+            + stub_command;
 
         if command_count != 1 {
-            return Err("Configuration must contain exactly one command (write_flash, read_flash, erase_flash, erase_region, stub_write, stub_clear, or stub_read)".to_string());
+            return Err("Configuration must contain exactly one command (write_flash, read_flash, erase_flash, erase_region, or stub)".to_string());
         }
 
-        if self.stub_write.is_some() || self.stub_clear.is_some() || self.stub_read.is_some() {
-            if let Some(ref stub_write) = self.stub_write {
+        if let Some(ref stub) = self.stub {
+            if stub_sub_count != 1 {
+                return Err("stub must contain exactly one of write, clear, or read".to_string());
+            }
+            if let Some(ref stub_write) = stub.write {
                 if stub_write.files.is_empty() {
-                    return Err("stub_write.files must not be empty".to_string());
+                    return Err("stub.write.files must not be empty".to_string());
                 }
             }
-            if let Some(ref stub_clear) = self.stub_clear {
+            if let Some(ref stub_clear) = stub.clear {
                 if stub_clear.files.is_empty() {
-                    return Err("stub_clear.files must not be empty".to_string());
+                    return Err("stub.clear.files must not be empty".to_string());
                 }
             }
-            if let Some(ref stub_read) = self.stub_read {
+            if let Some(ref stub_read) = stub.read {
                 if stub_read.files.is_empty() {
-                    return Err("stub_read.files must not be empty".to_string());
+                    return Err("stub.read.files must not be empty".to_string());
                 }
                 if stub_read.output.is_some() && stub_read.files.len() != 1 {
-                    return Err("stub_read.output requires exactly one input file".to_string());
+                    return Err("stub.read.output requires exactly one input file".to_string());
                 }
             }
             return Ok(());

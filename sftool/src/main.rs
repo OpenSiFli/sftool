@@ -196,14 +196,19 @@ fn execute_stub_read(files: &[String], output: Option<&str>) -> Result<()> {
 }
 
 fn execute_stub_config_command(config: &SfToolConfig) -> Result<()> {
-    if let Some(ref stub_write) = config.stub_write {
+    let stub = config
+        .stub
+        .as_ref()
+        .ok_or_else(|| anyhow!("No stub command found in config file"))?;
+
+    if let Some(ref stub_write) = stub.write {
         execute_stub_write(&stub_write.files, &stub_write.config)
-    } else if let Some(ref stub_clear) = config.stub_clear {
+    } else if let Some(ref stub_clear) = stub.clear {
         execute_stub_clear(&stub_clear.files)
-    } else if let Some(ref stub_read) = config.stub_read {
+    } else if let Some(ref stub_read) = stub.read {
         execute_stub_read(&stub_read.files, stub_read.output.as_deref())
     } else {
-        bail!("No stub command found in config file")
+        bail!("Stub command must contain exactly one of write, clear, or read")
     }
 }
 
@@ -440,7 +445,7 @@ fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<MergedConfig
         .unwrap_or(base_config.connect_attempts);
     let compat = args.compat.unwrap_or(base_config.compat);
     let quiet = args.quiet;
-    let stub = args.stub.clone().or_else(|| base_config.stub.clone());
+    let stub_path = args.stub.clone().or_else(|| base_config.stub_path.clone());
     // 验证必需字段
     if port.is_empty() {
         bail!("Port must be specified either via --port or in config file");
@@ -456,7 +461,7 @@ fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<MergedConfig
         connect_attempts,
         compat,
         quiet,
-        stub,
+        stub_path,
     ))
 }
 
@@ -587,17 +592,29 @@ fn main() -> Result<()> {
             return Ok(());
         }
         CommandSource::Config(cfg) => {
-            if cfg.stub_write.is_some() || cfg.stub_clear.is_some() || cfg.stub_read.is_some() {
-                execute_stub_config_command(cfg)?;
-                return Ok(());
+            if let Some(stub) = &cfg.stub {
+                if stub.write.is_some() || stub.clear.is_some() || stub.read.is_some() {
+                    execute_stub_config_command(cfg)?;
+                    return Ok(());
+                }
             }
         }
         _ => {}
     }
 
     // Merge CLI args with config file, CLI args take precedence
-    let (chip_type, memory_type, port, baud, before, after, connect_attempts, compat, quiet, stub) =
-        merge_config(&args, config.clone()).context("Configuration error")?;
+    let (
+        chip_type,
+        memory_type,
+        port,
+        baud,
+        before,
+        after,
+        connect_attempts,
+        compat,
+        quiet,
+        stub_path,
+    ) = merge_config(&args, config.clone()).context("Configuration error")?;
 
     // On macOS, convert /dev/tty.* to /dev/cu.*
     let port = normalize_mac_port_name(&port);
@@ -619,7 +636,7 @@ fn main() -> Result<()> {
             } else {
                 create_indicatif_progress_callback()
             },
-            stub,
+            stub_path,
         ),
     );
 

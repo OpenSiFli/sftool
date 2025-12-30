@@ -46,6 +46,10 @@
       "default": false,
       "description": "Enable compatibility mode"
     },
+    "stub_path": {
+      "type": "string",
+      "description": "External stub file path (overrides embedded stub)"
+    },
     "quiet": {
       "type": "boolean",
       "default": false,
@@ -63,14 +67,8 @@
     "erase_region": {
       "$ref": "#/definitions/eraseRegionCommand"
     },
-    "stub_write": {
-      "$ref": "#/definitions/stubWriteCommand"
-    },
-    "stub_clear": {
-      "$ref": "#/definitions/stubClearCommand"
-    },
-    "stub_read": {
-      "$ref": "#/definitions/stubReadCommand"
+    "stub": {
+      "$ref": "#/definitions/stubCommand"
     }
   },
   "oneOf": [
@@ -78,9 +76,7 @@
     { "required": [ "read_flash" ] },
     { "required": [ "erase_flash" ] },
     { "required": [ "erase_region" ] },
-    { "required": [ "stub_write" ] },
-    { "required": [ "stub_clear" ] },
-    { "required": [ "stub_read" ] }
+    { "required": [ "stub" ] }
   ],
   "allOf": [
     {
@@ -223,6 +219,21 @@
     },
     "stubConfig": {
       "$ref": "stub_config_schema.json"
+    },
+    "stubCommand": {
+      "type": "object",
+      "description": "Stub command (write/clear/read)",
+      "properties": {
+        "write": { "$ref": "#/definitions/stubWriteCommand" },
+        "clear": { "$ref": "#/definitions/stubClearCommand" },
+        "read": { "$ref": "#/definitions/stubReadCommand" }
+      },
+      "oneOf": [
+        { "required": [ "write" ] },
+        { "required": [ "clear" ] },
+        { "required": [ "read" ] }
+      ],
+      "additionalProperties": false
     },
     "stubWriteCommand": {
       "type": "object",
