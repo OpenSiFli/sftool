@@ -1,0 +1,32 @@
+{
+  "pins": [
+    {
+      "port": "PA",
+      "number": 1,
+      "level": "high"
+    },
+    {
+      "port": "PB",
+      "number": 2,
+      "level": "low"
+    },
+    {
+      "port": "PBR",
+      "number": 3,
+      "level": "high"
+    }
+  ],
+  "flash": [
+    {
+      "media": "nor",
+      "driver_index": 4,
+      "manufacturer_id": 1,
+      "device_type": 2,
+      "density_id": 3,
+      "flags": 4,
+      "capacity_bytes": 16534
+    }
+  ],
+  "pmic": null,
+  "sd0": null
+}

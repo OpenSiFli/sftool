@@ -1898,6 +1898,8 @@ dependencies = [
  "phf",
  "probe-rs",
  "rust-embed",
+ "serde",
+ "serde_json",
  "serialport",
  "strum 0.27.1",
  "tempfile",
