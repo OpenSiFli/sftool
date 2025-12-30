@@ -145,6 +145,43 @@ impl Utils {
         }
     }
 
+    /// 解析写入文件信息，直接使用路径与可选地址
+    pub fn parse_write_file(path: &str, address: Option<u32>) -> Result<Vec<WriteFlashFile>> {
+        let file_path = Path::new(path);
+        match address {
+            Some(addr) => {
+                let file_type = Self::detect_file_type(file_path)?;
+                match file_type {
+                    FileType::Hex => {
+                        Self::hex_with_base_to_write_flash_files(file_path, Some(addr))
+                    }
+                    FileType::Elf => Err(Error::invalid_input(
+                        "ELF files do not support @address format",
+                    )),
+                    _ => {
+                        let file = std::fs::File::open(file_path)?;
+                        let crc32 = Self::get_file_crc32(&file)?;
+                        Ok(vec![WriteFlashFile {
+                            address: addr,
+                            file,
+                            crc32,
+                        }])
+                    }
+                }
+            }
+            None => {
+                let file_type = Self::detect_file_type(file_path)?;
+                match file_type {
+                    FileType::Hex => Self::hex_to_write_flash_files(file_path),
+                    FileType::Elf => Self::elf_to_write_flash_files(file_path),
+                    _ => Err(Error::invalid_input(
+                        "For binary files, please use the <file@address> format",
+                    )),
+                }
+            }
+        }
+    }
+
     /// 计算数据的CRC32
     pub fn calculate_crc32(data: &[u8]) -> u32 {
         const CRC_32_ALGO: Algorithm<u32> = Algorithm {
