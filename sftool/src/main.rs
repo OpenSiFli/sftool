@@ -5,9 +5,11 @@ use strum::{Display, EnumString};
 
 mod config;
 mod progress;
+mod stub_config_spec;
 
 use config::SfToolConfig;
 use progress::create_indicatif_progress_callback;
+use stub_config_spec::StubConfigSpec;
 
 type MergedConfig = (
     ChipType,
@@ -128,6 +130,83 @@ fn execute_config_command(
     }
 }
 
+fn load_stub_config_spec(path: &str) -> Result<StubConfigSpec> {
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read stub config file '{}'", path))?;
+    let spec: StubConfigSpec =
+        serde_json::from_str(&content).with_context(|| "Failed to parse stub config JSON")?;
+    Ok(spec)
+}
+
+fn execute_stub_write(files: &[String], spec: &StubConfigSpec) -> Result<()> {
+    let config = spec.to_stub_config().context("Invalid stub config")?;
+    for file in files {
+        sftool_lib::stub_config::write_stub_config_to_file(file, &config)
+            .with_context(|| format!("Failed to write stub config to '{}'", file))?;
+    }
+    Ok(())
+}
+
+fn execute_stub_clear(files: &[String]) -> Result<()> {
+    for file in files {
+        sftool_lib::stub_config::clear_stub_config_in_file(file)
+            .with_context(|| format!("Failed to clear stub config in '{}'", file))?;
+    }
+    Ok(())
+}
+
+fn execute_stub_read(files: &[String], output: Option<&str>) -> Result<()> {
+    if let Some(output_path) = output {
+        if files.len() != 1 {
+            bail!("--output requires exactly one input file");
+        }
+        let config = sftool_lib::stub_config::read_stub_config_from_file(&files[0])
+            .with_context(|| format!("Failed to read stub config from '{}'", files[0]))?;
+        let spec = StubConfigSpec::from_stub_config(&config);
+        let json = serde_json::to_string_pretty(&spec)?;
+        std::fs::write(output_path, json)
+            .with_context(|| format!("Failed to write stub config to '{}'", output_path))?;
+        return Ok(());
+    }
+
+    if files.len() == 1 {
+        let config = sftool_lib::stub_config::read_stub_config_from_file(&files[0])
+            .with_context(|| format!("Failed to read stub config from '{}'", files[0]))?;
+        let spec = StubConfigSpec::from_stub_config(&config);
+        println!("{}", serde_json::to_string_pretty(&spec)?);
+        return Ok(());
+    }
+
+    #[derive(serde::Serialize)]
+    struct StubReadOutput<'a> {
+        file: &'a str,
+        config: StubConfigSpec,
+    }
+
+    let mut output_items = Vec::new();
+    for file in files {
+        let config = sftool_lib::stub_config::read_stub_config_from_file(file)
+            .with_context(|| format!("Failed to read stub config from '{}'", file))?;
+        let spec = StubConfigSpec::from_stub_config(&config);
+        output_items.push(StubReadOutput { file, config: spec });
+    }
+
+    println!("{}", serde_json::to_string_pretty(&output_items)?);
+    Ok(())
+}
+
+fn execute_stub_config_command(config: &SfToolConfig) -> Result<()> {
+    if let Some(ref stub_write) = config.stub_write {
+        execute_stub_write(&stub_write.files, &stub_write.config)
+    } else if let Some(ref stub_clear) = config.stub_clear {
+        execute_stub_clear(&stub_clear.files)
+    } else if let Some(ref stub_read) = config.stub_read {
+        execute_stub_read(&stub_read.files, stub_read.output.as_deref())
+    } else {
+        bail!("No stub command found in config file")
+    }
+}
+
 #[derive(EnumString, Display, Debug, Clone, ValueEnum)]
 enum Memory {
     #[clap(name = "nor")]
@@ -206,6 +285,9 @@ enum Commands {
     /// Erase a region of the flash
     #[command(name = "erase_region")]
     EraseRegion(EraseRegion),
+    /// Manage stub config in AXF/ELF driver files
+    #[command(name = "stub")]
+    Stub(StubCommand),
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -250,6 +332,60 @@ struct EraseRegion {
     /// Erase region (format: <address:size>)
     #[arg(required = true)]
     region: Vec<String>,
+}
+
+#[derive(Parser, Debug, Clone)]
+#[command(about = "Manage stub config in AXF/ELF driver files")]
+struct StubCommand {
+    #[command(subcommand)]
+    action: StubAction,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+enum StubAction {
+    /// Write stub config into AXF/ELF driver files
+    #[command(name = "write")]
+    Write(StubWrite),
+
+    /// Clear stub config in AXF/ELF driver files
+    #[command(name = "clear")]
+    Clear(StubClear),
+
+    /// Read stub config from AXF/ELF driver files
+    #[command(name = "read")]
+    Read(StubRead),
+}
+
+#[derive(Parser, Debug, Clone)]
+#[command(about = "Write stub config into AXF/ELF driver files")]
+struct StubWrite {
+    /// Target driver files
+    #[arg(required = true)]
+    files: Vec<String>,
+
+    /// Stub config JSON file path
+    #[arg(long = "stub-config")]
+    stub_config: String,
+}
+
+#[derive(Parser, Debug, Clone)]
+#[command(about = "Clear stub config in AXF/ELF driver files")]
+struct StubClear {
+    /// Target driver files
+    #[arg(required = true)]
+    files: Vec<String>,
+}
+
+#[derive(Parser, Debug, Clone)]
+#[command(about = "Read stub config from AXF/ELF driver files")]
+struct StubRead {
+    /// Target driver files
+    #[arg(required = true)]
+    files: Vec<String>,
+
+    /// Optional output JSON file (single input only)
+    #[arg(long = "output")]
+    output: Option<String>,
 }
 
 /// Convert Memory enum to string
@@ -431,6 +567,34 @@ fn main() -> Result<()> {
         None
     };
 
+    // Determine which command to execute
+    let command_source = get_command_source(&args, config.clone())?;
+
+    match &command_source {
+        CommandSource::Cli(Commands::Stub(stub)) => {
+            match &stub.action {
+                StubAction::Write(params) => {
+                    let stub_spec = load_stub_config_spec(&params.stub_config)?;
+                    execute_stub_write(&params.files, &stub_spec)?;
+                }
+                StubAction::Clear(params) => {
+                    execute_stub_clear(&params.files)?;
+                }
+                StubAction::Read(params) => {
+                    execute_stub_read(&params.files, params.output.as_deref())?;
+                }
+            }
+            return Ok(());
+        }
+        CommandSource::Config(cfg) => {
+            if cfg.stub_write.is_some() || cfg.stub_clear.is_some() || cfg.stub_read.is_some() {
+                execute_stub_config_command(cfg)?;
+                return Ok(());
+            }
+        }
+        _ => {}
+    }
+
     // Merge CLI args with config file, CLI args take precedence
     let (chip_type, memory_type, port, baud, before, after, connect_attempts, compat, quiet, stub) =
         merge_config(&args, config.clone()).context("Configuration error")?;
@@ -465,11 +629,11 @@ fn main() -> Result<()> {
             .with_context(|| format!("Failed to set baud rate to {}", baud))?;
     }
 
-    // Determine which command to execute
-    let command_source = get_command_source(&args, config)?;
-
     match command_source {
         CommandSource::Cli(command) => match command {
+            Commands::Stub(_) => {
+                // handled earlier
+            }
             Commands::WriteFlash(params) => {
                 let mut files = Vec::new();
                 for file_str in params.files.iter() {

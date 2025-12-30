@@ -1,10 +1,13 @@
 use serde::{Deserialize, Serialize};
 use sftool_lib::{AfterOperation, BeforeOperation, ChipType};
 
+use crate::stub_config_spec::StubConfigSpec;
+
 /// 应用程序的默认配置值
 pub struct Defaults;
 
 impl Defaults {
+    pub const CHIP: &'static str = "SF32LB52";
     pub const MEMORY: &'static str = "nor";
     pub const BAUD: u32 = 1000000;
     pub const BEFORE: &'static str = "default_reset";
@@ -81,12 +84,35 @@ pub struct EraseRegionCommandConfig {
     pub regions: Vec<RegionItemConfig>,
 }
 
+/// 写入 stub 配置命令
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StubWriteCommandConfig {
+    pub files: Vec<String>,
+    pub config: StubConfigSpec,
+}
+
+/// 清空 stub 配置命令
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StubClearCommandConfig {
+    pub files: Vec<String>,
+}
+
+/// 读取 stub 配置命令
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StubReadCommandConfig {
+    pub files: Vec<String>,
+    #[serde(default)]
+    pub output: Option<String>,
+}
+
 /// JSON 配置文件的根结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SfToolConfig {
+    #[serde(default = "default_chip")]
     pub chip: String,
     #[serde(default = "default_memory")]
     pub memory: String,
+    #[serde(default)]
     pub port: String,
     #[serde(default = "default_baud")]
     pub baud: u32,
@@ -109,9 +135,15 @@ pub struct SfToolConfig {
     pub read_flash: Option<ReadFlashCommandConfig>,
     pub erase_flash: Option<EraseFlashCommandConfig>,
     pub erase_region: Option<EraseRegionCommandConfig>,
+    pub stub_write: Option<StubWriteCommandConfig>,
+    pub stub_clear: Option<StubClearCommandConfig>,
+    pub stub_read: Option<StubReadCommandConfig>,
 }
 
 // 默认值函数 - 使用统一的 Defaults 常量
+fn default_chip() -> String {
+    Defaults::CHIP.to_string()
+}
 fn default_memory() -> String {
     Defaults::MEMORY.to_string()
 }
@@ -139,7 +171,7 @@ impl SfToolConfig {
     /// 创建一个具有所有默认值的配置
     pub fn with_defaults() -> Self {
         Self {
-            chip: "SF32LB52".to_string(), // 这将被要求用户提供
+            chip: Defaults::CHIP.to_string(), // 这将被要求用户提供
             memory: Defaults::MEMORY.to_string(),
             port: String::new(), // 这将被要求用户提供
             baud: Defaults::BAUD,
@@ -153,6 +185,9 @@ impl SfToolConfig {
             read_flash: None,
             erase_flash: None,
             erase_region: None,
+            stub_write: None,
+            stub_clear: None,
+            stub_read: None,
         }
     }
 
@@ -194,13 +229,38 @@ impl SfToolConfig {
             self.read_flash.is_some(),
             self.erase_flash.is_some(),
             self.erase_region.is_some(),
+            self.stub_write.is_some(),
+            self.stub_clear.is_some(),
+            self.stub_read.is_some(),
         ]
         .iter()
         .filter(|&&x| x)
         .count();
 
         if command_count != 1 {
-            return Err("Configuration must contain exactly one command (write_flash, read_flash, erase_flash, or erase_region)".to_string());
+            return Err("Configuration must contain exactly one command (write_flash, read_flash, erase_flash, erase_region, stub_write, stub_clear, or stub_read)".to_string());
+        }
+
+        if self.stub_write.is_some() || self.stub_clear.is_some() || self.stub_read.is_some() {
+            if let Some(ref stub_write) = self.stub_write {
+                if stub_write.files.is_empty() {
+                    return Err("stub_write.files must not be empty".to_string());
+                }
+            }
+            if let Some(ref stub_clear) = self.stub_clear {
+                if stub_clear.files.is_empty() {
+                    return Err("stub_clear.files must not be empty".to_string());
+                }
+            }
+            if let Some(ref stub_read) = self.stub_read {
+                if stub_read.files.is_empty() {
+                    return Err("stub_read.files must not be empty".to_string());
+                }
+                if stub_read.output.is_some() && stub_read.files.len() != 1 {
+                    return Err("stub_read.output requires exactly one input file".to_string());
+                }
+            }
+            return Ok(());
         }
 
         // 验证芯片类型

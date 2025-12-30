@@ -62,14 +62,43 @@
     },
     "erase_region": {
       "$ref": "#/definitions/eraseRegionCommand"
+    },
+    "stub_write": {
+      "$ref": "#/definitions/stubWriteCommand"
+    },
+    "stub_clear": {
+      "$ref": "#/definitions/stubClearCommand"
+    },
+    "stub_read": {
+      "$ref": "#/definitions/stubReadCommand"
     }
   },
-  "required": [ "chip", "port" ],
   "oneOf": [
     { "required": [ "write_flash" ] },
     { "required": [ "read_flash" ] },
     { "required": [ "erase_flash" ] },
-    { "required": [ "erase_region" ] }
+    { "required": [ "erase_region" ] },
+    { "required": [ "stub_write" ] },
+    { "required": [ "stub_clear" ] },
+    { "required": [ "stub_read" ] }
+  ],
+  "allOf": [
+    {
+      "if": { "required": [ "write_flash" ] },
+      "then": { "required": [ "chip", "port" ] }
+    },
+    {
+      "if": { "required": [ "read_flash" ] },
+      "then": { "required": [ "chip", "port" ] }
+    },
+    {
+      "if": { "required": [ "erase_flash" ] },
+      "then": { "required": [ "chip", "port" ] }
+    },
+    {
+      "if": { "required": [ "erase_region" ] },
+      "then": { "required": [ "chip", "port" ] }
+    }
   ],
   "additionalProperties": false,
   "definitions": {
@@ -190,6 +219,58 @@
         }
       },
       "required": [ "regions" ],
+      "additionalProperties": false
+    },
+    "stubConfig": {
+      "$ref": "stub_config_schema.json"
+    },
+    "stubWriteCommand": {
+      "type": "object",
+      "description": "Parameters for the stub_write command",
+      "properties": {
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "List of AXF/ELF files to update"
+        },
+        "config": {
+          "$ref": "#/definitions/stubConfig"
+        }
+      },
+      "required": [ "files", "config" ],
+      "additionalProperties": false
+    },
+    "stubClearCommand": {
+      "type": "object",
+      "description": "Parameters for the stub_clear command",
+      "properties": {
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "List of AXF/ELF files to clear"
+        }
+      },
+      "required": [ "files" ],
+      "additionalProperties": false
+    },
+    "stubReadCommand": {
+      "type": "object",
+      "description": "Parameters for the stub_read command",
+      "properties": {
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "List of AXF/ELF files to read"
+        },
+        "output": {
+          "type": "string",
+          "description": "Optional output JSON file (single input only)"
+        }
+      },
+      "required": [ "files" ],
       "additionalProperties": false
     }
   }

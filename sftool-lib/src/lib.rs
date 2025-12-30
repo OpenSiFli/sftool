@@ -3,6 +3,7 @@ mod ram_stub;
 pub mod read_flash;
 pub mod reset;
 pub mod speed;
+pub mod stub_config;
 pub mod utils;
 pub mod write_flash;
 

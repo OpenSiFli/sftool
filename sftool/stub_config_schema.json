@@ -1,0 +1,229 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SiFli SoC stub Driver Config Block Schema",
+  "description": "JSON schema that maps to T_EXT_DRIVER_CFG and related structures.",
+  "type": "object",
+  "properties": {
+    "pins": {
+      "type": "array",
+      "maxItems": 12,
+      "items": { "$ref": "#/definitions/pinCfgItem" },
+      "description": "Variable-length pin config entries. Masks are derived from array order."
+    },
+    "flash": {
+      "type": "array",
+      "maxItems": 12,
+      "items": { "$ref": "#/definitions/flashCfgItem" },
+      "description": "Variable-length flash config entries. Masks are derived from array order."
+    },
+    "pmic": {
+      "$ref": "#/definitions/pmicCfg",
+      "description": "PMIC configuration block. Presence implies pmic_mask is non-zero."
+    },
+    "sd0": {
+      "$ref": "#/definitions/sd0Cfg",
+      "description": "SD0 configuration block. Presence implies sd0_mask is non-zero."
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "hexU8": {
+      "type": "string",
+      "pattern": "^0x[0-9A-Fa-f]{1,2}$",
+      "description": "8-bit hex value, e.g. 0x1A"
+    },
+    "hexU16": {
+      "type": "string",
+      "pattern": "^0x[0-9A-Fa-f]{1,4}$",
+      "description": "16-bit hex value, e.g. 0x00FF"
+    },
+    "hexU32": {
+      "type": "string",
+      "pattern": "^0x[0-9A-Fa-f]{1,8}$",
+      "description": "32-bit hex value, e.g. 0x12000000"
+    },
+    "u8": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "u16": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "u32": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "byteValue": {
+      "oneOf": [
+        { "$ref": "#/definitions/u8" },
+        { "$ref": "#/definitions/hexU8" }
+      ]
+    },
+    "u16Value": {
+      "oneOf": [
+        { "$ref": "#/definitions/u16" },
+        { "$ref": "#/definitions/hexU16" }
+      ]
+    },
+    "u32Value": {
+      "oneOf": [
+        { "$ref": "#/definitions/u32" },
+        { "$ref": "#/definitions/hexU32" }
+      ]
+    },
+    "decString": {
+      "type": "string",
+      "pattern": "^[0-9]+$",
+      "description": "Decimal string, e.g. 4096"
+    },
+    "decWithSuffix": {
+      "type": "string",
+      "pattern": "^[0-9]+[kKmMgG]$",
+      "description": "Decimal string with SI suffix (k/M/G)."
+    },
+    "sizeValue": {
+      "oneOf": [
+        { "$ref": "#/definitions/u32" },
+        { "$ref": "#/definitions/hexU32" },
+        { "$ref": "#/definitions/decString" },
+        { "$ref": "#/definitions/decWithSuffix" }
+      ],
+      "description": "Capacity value (number, hex string, or decimal with optional k/M/G suffix)."
+    },
+    "pinType": {
+      "oneOf": [
+        { "type": "string", "enum": ["PA", "PB", "PBR"] },
+        { "type": "integer", "enum": [0, 1, 2] }
+      ],
+      "description": "Pin group/type (PA=0, PB=1, PBR=2)."
+    },
+    "pinLevel": {
+      "oneOf": [
+        { "type": "string", "enum": ["low", "high"] },
+        { "type": "integer", "enum": [0, 1] }
+      ],
+      "description": "Pin level (low=0, high=1)."
+    },
+    "pinCfgItem": {
+      "type": "object",
+      "description": "T_EXT_PIN_CFG entry.",
+      "properties": {
+        "port": { "$ref": "#/definitions/pinType" },
+        "number": { "$ref": "#/definitions/u8" },
+        "level": { "$ref": "#/definitions/pinLevel" }
+      },
+      "required": ["port", "number", "level"],
+      "additionalProperties": false
+    },
+    "flashMedia": {
+      "oneOf": [
+        { "type": "string", "enum": ["nor", "nand"] },
+        { "type": "integer", "enum": [0, 1] }
+      ],
+      "description": "NOR=0, NAND=1."
+    },
+    "flashCfgItem": {
+      "type": "object",
+      "description": "T_EXT_FLASH_CFG entry.",
+      "properties": {
+        "media": { "$ref": "#/definitions/flashMedia" },
+        "driver_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "description": "Flash driver type index (typically 0-5)."
+        },
+        "manufacturer_id": { "$ref": "#/definitions/byteValue" },
+        "device_type": { "$ref": "#/definitions/byteValue" },
+        "density_id": { "$ref": "#/definitions/byteValue" },
+        "flags": { "$ref": "#/definitions/byteValue" },
+        "capacity_bytes": { "$ref": "#/definitions/sizeValue" }
+      },
+      "required": [
+        "media",
+        "driver_index",
+        "manufacturer_id",
+        "device_type",
+        "density_id",
+        "flags",
+        "capacity_bytes"
+      ],
+      "additionalProperties": false
+    },
+    "pmicChannelName": {
+      "type": "string",
+      "enum": [
+        "1v8_lvsw100_1",
+        "1v8_lvsw100_2",
+        "1v8_lvsw100_3",
+        "1v8_lvsw100_4",
+        "1v8_lvsw100_5",
+        "vbat_hvsw150_1",
+        "vbat_hvsw150_2",
+        "ldo33",
+        "ldo30",
+        "ldo28"
+      ],
+      "description": "Enabled PMIC channels."
+    },
+    "pmicCfg": {
+      "type": "object",
+      "description": "T_EXT_PMIC_CFG entry.",
+      "properties": {
+        "disabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable PMIC when true."
+        },
+        "scl_port": { "$ref": "#/definitions/pinType" },
+        "scl_pin": { "$ref": "#/definitions/u8" },
+        "sda_port": { "$ref": "#/definitions/pinType" },
+        "sda_pin": { "$ref": "#/definitions/u8" },
+        "channels": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/pmicChannelName" },
+          "description": "Presence means ON; omitted means OFF. Channels: 1v8_lvsw100_1..5, vbat_hvsw150_1..2, ldo33, ldo30, ldo28."
+        }
+      },
+      "required": [
+        "disabled",
+        "scl_port",
+        "scl_pin",
+        "sda_port",
+        "sda_pin",
+        "channels"
+      ],
+      "additionalProperties": false
+    },
+    "sd0Cfg": {
+      "type": "object",
+      "description": "T_EXT_SD0_CFG entry.",
+      "properties": {
+        "base_address": {
+          "oneOf": [
+            { "$ref": "#/definitions/u32Value" },
+            { "$ref": "#/definitions/decString" }
+          ]
+        },
+        "pinmux": {
+          "type": "string",
+          "enum": ["clk_pa34_or_pa09", "clk_pa60_or_pa39"],
+          "description": "SDIO1 pinmux option: clk_pa34_or_pa09 or clk_pa60_or_pa39."
+        },
+        "init_sequence": {
+          "type": "string",
+          "enum": ["emmc_then_sd", "sd_then_emmc"],
+          "description": "Init sequence (EMMC then SD, or SD then EMMC)."
+        }
+      },
+      "required": ["base_address", "pinmux", "init_sequence"],
+      "additionalProperties": false
+    }
+  }
+}
