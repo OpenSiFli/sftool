@@ -197,17 +197,14 @@ impl StubConfigSpec {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        let pmic = match &self.pmic {
-            Some(pmic) => Some(lib::PmicConfig {
-                disabled: pmic.disabled,
-                scl_port: pmic.scl_port.into(),
-                scl_pin: pmic.scl_pin,
-                sda_port: pmic.sda_port.into(),
-                sda_pin: pmic.sda_pin,
-                channels: pmic.channels.iter().map(|c| (*c).into()).collect(),
-            }),
-            None => None,
-        };
+        let pmic = self.pmic.as_ref().map(|pmic| lib::PmicConfig {
+            disabled: pmic.disabled,
+            scl_port: pmic.scl_port.into(),
+            scl_pin: pmic.scl_pin,
+            sda_port: pmic.sda_port.into(),
+            sda_pin: pmic.sda_pin,
+            channels: pmic.channels.iter().map(|c| (*c).into()).collect(),
+        });
 
         let sd0 = match &self.sd0 {
             Some(sd0) => Some(lib::Sd0Config {

@@ -267,15 +267,15 @@ impl SfToolConfig {
             if stub_sub_count != 1 {
                 return Err("stub must contain exactly one of write, clear, or read".to_string());
             }
-            if let Some(ref stub_write) = stub.write {
-                if stub_write.files.is_empty() {
-                    return Err("stub.write.files must not be empty".to_string());
-                }
+            if let Some(ref stub_write) = stub.write
+                && stub_write.files.is_empty()
+            {
+                return Err("stub.write.files must not be empty".to_string());
             }
-            if let Some(ref stub_clear) = stub.clear {
-                if stub_clear.files.is_empty() {
-                    return Err("stub.clear.files must not be empty".to_string());
-                }
+            if let Some(ref stub_clear) = stub.clear
+                && stub_clear.files.is_empty()
+            {
+                return Err("stub.clear.files must not be empty".to_string());
             }
             if let Some(ref stub_read) = stub.read {
                 if stub_read.files.is_empty() {

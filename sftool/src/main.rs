@@ -66,11 +66,11 @@ fn main() -> Result<()> {
             return Ok(());
         }
         CommandSource::Config(cfg) => {
-            if let Some(stub) = &cfg.stub {
-                if stub.write.is_some() || stub.clear.is_some() || stub.read.is_some() {
-                    execute_stub_config_command(cfg)?;
-                    return Ok(());
-                }
+            if let Some(stub) = &cfg.stub
+                && (stub.write.is_some() || stub.clear.is_some() || stub.read.is_some())
+            {
+                execute_stub_config_command(cfg)?;
+                return Ok(());
             }
         }
         _ => {}
