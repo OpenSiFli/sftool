@@ -10,7 +10,7 @@ SFTool是一个专为SiFli系列SoC（系统芯片）设计的开源工具，用
 
 ## 特性
 
-- 支持SF32LB52芯片
+- 支持SF32LB52、SF32LB56、SF32LB58芯片
 - 支持多种存储类型：NOR闪存、NAND闪存和SD卡
 - 可配置的串口参数
 - 可靠的闪存写入功能，支持验证和压缩
@@ -45,18 +45,33 @@ cargo build --release
 
 ```bash
 sftool [选项] 命令 [命令选项]
+sftool [选项] config <FILE>
 ```
 
 ### 全局选项
 
 - `-c, --chip <CHIP>`: 目标芯片类型 (目前支持SF32LB52)
-- `-m, --memory <MEMORY>`: 存储类型 [nor, nand, sd] (默认: nor)
+- `-m, --memory <MEMORY>`: 存储类型 [nor, nand, sd] (默认: nor，不区分大小写)
 - `-p, --port <PORT>`: 串行端口设备路径
 - `-b, --baud <BAUD>`: 闪存/读取时使用的串口波特率 (默认: 1000000)
 - `--before <OPERATION>`: 连接芯片前的操作 [default_reset, no_reset, no_reset_no_sync] (默认: default_reset)
 - `--after <OPERATION>`: 工具完成后的操作 [soft_reset, no_reset] (默认: soft_reset)
-- `--connect-attempts <ATTEMPTS>`: 连接尝试次数，负数或0表示无限次 (默认: 7)
+- `--connect-attempts <ATTEMPTS>`: 连接尝试次数，负数或0表示无限次 (默认: 3)
 - `--compat` : 兼容模式，如果经常出现超时错误或下载后校验失败，则应打开此选项。
+
+### JSON 参数文件（sftool_param.json）
+
+可以用 JSON 描述一次命令并通过 `config` 子命令执行：
+
+```bash
+sftool config sftool_param.json
+
+# CLI 参数可以覆盖或补充 JSON 中的字段
+sftool -c SF32LB52 -p /dev/ttyUSB0 config sftool_param.json
+```
+
+JSON 文件可以不包含所有字段，CLI 参数与默认值会先合并；合并后仍缺少必须参数才会报错。
+schema 位于仓库中的 `sftool_param_schema.json`。
 
 ### 写入闪存命令
 

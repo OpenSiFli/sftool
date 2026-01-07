@@ -55,18 +55,34 @@ cargo build --release
 
 ```bash
 sftool [OPTIONS] COMMAND [COMMAND_OPTIONS]
+sftool [OPTIONS] config <FILE>
 ```
 
 ### Global Options
 
 - `-c, --chip <CHIP>`: Target chip type (currently supports SF32LB52, SF32LB56, SF32LB58)
-- `-m, --memory <MEMORY>`: Memory type [nor, nand, sd] (default: nor)
+- `-m, --memory <MEMORY>`: Memory type [nor, nand, sd] (default: nor, case-insensitive)
 - `-p, --port <PORT>`: Serial port device path
 - `-b, --baud <BAUD>`: Baud rate for flash/read operations (default: 1000000)
 - `--before <OPERATION>`: Operation before connecting to the chip [default_reset, no_reset, no_reset_no_sync] (default: default_reset)
 - `--after <OPERATION>`: Operation after tool completion [soft_reset, no_reset] (default: soft_reset)
-- `--connect-attempts <ATTEMPTS>`: Number of connection attempts, negative or 0 for infinite (default: 7)
+- `--connect-attempts <ATTEMPTS>`: Number of connection attempts, negative or 0 for infinite (default: 3)
 - `--compat`: Compatibility mode, enable if you frequently encounter timeout errors or checksum failures
+
+### JSON Config (sftool_param.json)
+
+You can describe a command in a JSON file (for automation) and run it with the `config` subcommand:
+
+```bash
+sftool config sftool_param.json
+
+# CLI options can override or fill missing fields in the JSON
+sftool -c SF32LB52 -p /dev/ttyUSB0 config sftool_param.json
+```
+
+The JSON file does not need to include every field; CLI options and defaults are merged first, and
+validation fails only if required values are still missing. The schema is in
+`sftool_param_schema.json` in the repository.
 
 ### Write Flash Command
 
