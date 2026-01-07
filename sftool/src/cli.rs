@@ -31,16 +31,12 @@ pub enum Memory {
 #[derive(Parser, Debug)]
 #[command(author, version, about = "sftool CLI", long_about = None)]
 pub struct Cli {
-    /// JSON configuration file path
-    #[arg(long = "config", short = 'f')]
-    pub config: Option<String>,
-
     /// Target chip type
     #[arg(short = 'c', long = "chip", value_enum)]
     pub chip: Option<ChipType>,
 
     /// Memory type (default: nor)
-    #[arg(short = 'm', long = "memory", value_enum)]
+    #[arg(short = 'm', long = "memory", value_enum, ignore_case = true)]
     pub memory: Option<Memory>,
 
     /// Serial port device
@@ -85,6 +81,10 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum Commands {
+    /// Execute a command from a JSON configuration file
+    #[command(name = "config")]
+    Config(ConfigCommand),
+
     /// Write a binary blob to flash
     #[command(name = "write_flash")]
     WriteFlash(WriteFlash),
@@ -104,6 +104,14 @@ pub enum Commands {
     /// Manage stub config in AXF/ELF driver files
     #[command(name = "stub")]
     Stub(StubCommand),
+}
+
+#[derive(Parser, Debug, Clone)]
+#[command(about = "Execute a command from a JSON configuration file")]
+pub struct ConfigCommand {
+    /// JSON configuration file path
+    #[arg(required = true, value_name = "FILE")]
+    pub path: String,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -213,6 +221,17 @@ fn memory_to_string(memory: &Memory) -> String {
     }
 }
 
+fn normalize_memory(memory: &str) -> Result<String> {
+    let normalized = memory.to_ascii_lowercase();
+    match normalized.as_str() {
+        "nor" | "nand" | "sd" => Ok(normalized),
+        _ => bail!(
+            "Invalid memory type '{}'. Must be one of: nor, nand, sd",
+            memory
+        ),
+    }
+}
+
 /// Merge CLI arguments with configuration file, CLI args take precedence
 pub fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<MergedConfig> {
     // 使用配置文件或默认配置
@@ -225,11 +244,12 @@ pub fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<MergedCo
             .map_err(|e| anyhow!("Invalid chip type in config: {}", e))?,
     };
 
-    let memory = args
+    let memory_raw = args
         .memory
         .as_ref()
         .map(memory_to_string)
         .unwrap_or_else(|| base_config.memory.clone());
+    let memory = normalize_memory(&memory_raw)?;
 
     let port = args
         .port
@@ -285,11 +305,11 @@ pub enum CommandSource {
 }
 
 pub fn get_command_source(args: &Cli, config: Option<SfToolConfig>) -> Result<CommandSource> {
-    match (&args.command, &config) {
-        (Some(cmd), _) => Ok(CommandSource::Cli(cmd.clone())),
-        (None, Some(cfg)) => Ok(CommandSource::Config(cfg.clone())),
-        (None, None) => {
-            bail!("No command specified. Use a subcommand or provide a config file with a command.")
-        }
+    match &args.command {
+        Some(Commands::Config(_)) => config
+            .map(CommandSource::Config)
+            .ok_or_else(|| anyhow!("Config command requires a configuration file")),
+        Some(cmd) => Ok(CommandSource::Cli(cmd.clone())),
+        None => bail!("No command specified. Use a subcommand or `config <file>`."),
     }
 }

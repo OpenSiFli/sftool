@@ -11,9 +11,9 @@
     },
     "memory": {
       "type": "string",
-      "enum": [ "nor", "nand", "sd" ],
+      "pattern": "^(?:[nN][oO][rR]|[nN][aA][nN][dD]|[sS][dD])$",
       "default": "nor",
-      "description": "Memory type"
+      "description": "Memory type (case-insensitive)"
     },
     "port": {
       "type": "string",
@@ -77,24 +77,6 @@
     { "required": [ "erase_flash" ] },
     { "required": [ "erase_region" ] },
     { "required": [ "stub" ] }
-  ],
-  "allOf": [
-    {
-      "if": { "required": [ "write_flash" ] },
-      "then": { "required": [ "chip", "port" ] }
-    },
-    {
-      "if": { "required": [ "read_flash" ] },
-      "then": { "required": [ "chip", "port" ] }
-    },
-    {
-      "if": { "required": [ "erase_flash" ] },
-      "then": { "required": [ "chip", "port" ] }
-    },
-    {
-      "if": { "required": [ "erase_region" ] },
-      "then": { "required": [ "chip", "port" ] }
-    }
   ],
   "additionalProperties": false,
   "definitions": {

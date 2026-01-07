@@ -30,20 +30,21 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
     let args = Cli::parse();
 
-    // Load config file if specified
-    let config = if let Some(ref config_path) = args.config {
-        let cfg = SfToolConfig::from_file(config_path)
-            .map_err(|e| anyhow!("Failed to load config file '{}': {}", config_path, e))?;
-        cfg.validate().map_err(|e| {
-            anyhow!(
-                "Configuration validation failed for '{}': {}",
-                config_path,
-                e
-            )
-        })?;
-        Some(cfg)
-    } else {
-        None
+    // Load config file when using the config subcommand
+    let config = match &args.command {
+        Some(Commands::Config(params)) => {
+            let cfg = SfToolConfig::from_file(&params.path)
+                .map_err(|e| anyhow!("Failed to load config file '{}': {}", params.path, e))?;
+            cfg.validate().map_err(|e| {
+                anyhow!(
+                    "Configuration validation failed for '{}': {}",
+                    params.path,
+                    e
+                )
+            })?;
+            Some(cfg)
+        }
+        _ => None,
     };
 
     // Determine which command to execute
@@ -135,7 +136,7 @@ fn main() -> Result<()> {
 
     match command_source {
         CommandSource::Cli(command) => match command {
-            Commands::Stub(_) => {
+            Commands::Stub(_) | Commands::Config(_) => {
                 // handled earlier
             }
             Commands::WriteFlash(params) => {

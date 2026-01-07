@@ -288,21 +288,6 @@ impl SfToolConfig {
             return Ok(());
         }
 
-        // 验证芯片类型
-        self.parse_chip_type()?;
-
-        // 验证操作类型
-        self.parse_before()?;
-        self.parse_after()?;
-
-        // 验证内存类型
-        if !["nor", "nand", "sd"].contains(&self.memory.as_str()) {
-            return Err(format!(
-                "Invalid memory type '{}'. Must be one of: nor, nand, sd",
-                self.memory
-            ));
-        }
-
         // 验证文件路径格式中的十六进制字符串
         if let Some(ref write_flash) = self.write_flash {
             for file in &write_flash.files {
