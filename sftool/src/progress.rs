@@ -5,8 +5,157 @@
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use sftool_lib::progress::{ProgressCallback, ProgressId, ProgressInfo, ProgressType};
 use std::collections::HashMap;
+use std::io::{self, IsTerminal, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+enum PercentProgressState {
+    Spinner { prefix: String },
+    Bar {
+        prefix: String,
+        total: u64,
+        current: u64,
+        last_percent: u64,
+    },
+}
+
+/// 基于标准错误的百分比进度回调实现
+pub struct PercentProgressCallback {
+    progress_states: Arc<Mutex<HashMap<u64, PercentProgressState>>>,
+    next_id: Arc<Mutex<u64>>,
+}
+
+impl PercentProgressCallback {
+    /// 创建新的百分比进度回调
+    pub fn new() -> Self {
+        Self {
+            progress_states: Arc::new(Mutex::new(HashMap::new())),
+            next_id: Arc::new(Mutex::new(1)),
+        }
+    }
+
+    /// 获取下一个唯一的进度条 ID
+    fn next_id(&self) -> u64 {
+        let mut id = self.next_id.lock().unwrap();
+        let current = *id;
+        *id += 1;
+        current
+    }
+
+    fn print_line(&self, line: &str) {
+        let mut stderr = io::stderr();
+        let _ = writeln!(stderr, "{}", line);
+        let _ = stderr.flush();
+    }
+
+    fn print_message(&self, prefix: &str, message: &str) {
+        if !message.is_empty() {
+            self.print_line(&format!("[{}] {}", prefix, message));
+        }
+    }
+
+    fn calculate_percent(current: u64, total: u64) -> u64 {
+        if total == 0 {
+            return 100;
+        }
+        let percent = current.saturating_mul(100) / total;
+        percent.min(100)
+    }
+}
+
+impl ProgressCallback for PercentProgressCallback {
+    fn start(&self, info: ProgressInfo) -> ProgressId {
+        let id = self.next_id();
+        let progress_id = ProgressId(id);
+        let prefix = info.prefix;
+        let message = info.message;
+
+        let state = match info.progress_type {
+            ProgressType::Spinner => {
+                self.print_message(&prefix, &message);
+                PercentProgressState::Spinner { prefix }
+            }
+            ProgressType::Bar { total } => {
+                self.print_message(&prefix, &message);
+                let current = info.current.unwrap_or(0);
+                let percent = Self::calculate_percent(current, total);
+                self.print_line(&format!("{}%", percent));
+                PercentProgressState::Bar {
+                    prefix,
+                    total,
+                    current,
+                    last_percent: percent,
+                }
+            }
+        };
+
+        self.progress_states.lock().unwrap().insert(id, state);
+        progress_id
+    }
+
+    fn update_message(&self, id: ProgressId, message: String) {
+        let prefix = {
+            let states = self.progress_states.lock().unwrap();
+            match states.get(&id.0) {
+                Some(PercentProgressState::Spinner { prefix }) => Some(prefix.clone()),
+                Some(PercentProgressState::Bar { prefix, .. }) => Some(prefix.clone()),
+                None => None,
+            }
+        };
+
+        if let Some(prefix) = prefix {
+            self.print_message(&prefix, &message);
+        }
+    }
+
+    fn increment(&self, id: ProgressId, delta: u64) {
+        let mut percent_to_print = None;
+        {
+            let mut states = self.progress_states.lock().unwrap();
+            if let Some(PercentProgressState::Bar {
+                total,
+                current,
+                last_percent,
+                ..
+            }) = states.get_mut(&id.0)
+            {
+                *current = current.saturating_add(delta);
+                let percent = Self::calculate_percent(*current, *total);
+                if percent != *last_percent {
+                    *last_percent = percent;
+                    percent_to_print = Some(percent);
+                }
+            }
+        }
+
+        if let Some(percent) = percent_to_print {
+            self.print_line(&format!("{}%", percent));
+        }
+    }
+
+    fn finish(&self, id: ProgressId, final_message: String) {
+        let (prefix, percent_to_print) = {
+            let mut states = self.progress_states.lock().unwrap();
+            match states.remove(&id.0) {
+                Some(PercentProgressState::Spinner { prefix }) => (Some(prefix), None),
+                Some(PercentProgressState::Bar {
+                    prefix,
+                    last_percent,
+                    ..
+                }) => (Some(prefix), if last_percent == 100 { None } else { Some(100) }),
+                None => (None, None),
+            }
+        };
+
+        if let Some(percent) = percent_to_print {
+            self.print_line(&format!("{}%", percent));
+        }
+
+        if let Some(prefix) = prefix {
+            self.print_message(&prefix, &final_message);
+        }
+    }
+}
 
 /// 基于 indicatif 的进度回调实现
 pub struct IndicatifProgressCallback {
@@ -107,5 +256,9 @@ impl ProgressCallback for IndicatifProgressCallback {
 
 /// 创建 indicatif 进度回调的便利函数
 pub fn create_indicatif_progress_callback() -> Arc<dyn ProgressCallback> {
-    Arc::new(IndicatifProgressCallback::new())
+    if io::stderr().is_terminal() {
+        Arc::new(PercentProgressCallback::new())
+    } else {
+        Arc::new(IndicatifProgressCallback::new())
+    }
 }
