@@ -275,7 +275,7 @@ pub fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<MergedCo
         .connect_attempts
         .unwrap_or(base_config.connect_attempts);
     let compat = args.compat.unwrap_or(base_config.compat);
-    let quiet = args.quiet;
+    let quiet = args.quiet || base_config.quiet;
     let stub_path = args.stub.clone().or_else(|| base_config.stub_path.clone());
     // 验证必需字段
     if port.is_empty() {
