@@ -128,6 +128,7 @@ impl ProgressHelper {
         ProgressHandler {
             callback: Arc::clone(&self.callback),
             id,
+            finished: false,
         }
     }
 
@@ -144,6 +145,7 @@ impl ProgressHelper {
         ProgressHandler {
             callback: Arc::clone(&self.callback),
             id,
+            finished: false,
         }
     }
 
@@ -165,6 +167,7 @@ impl ProgressHelper {
 pub struct ProgressHandler {
     callback: ProgressCallbackArc,
     id: ProgressId,
+    finished: bool,
 }
 
 impl ProgressHandler {
@@ -179,7 +182,16 @@ impl ProgressHandler {
     }
 
     /// 完成进度条
-    pub fn finish_with_message(self, message: impl Into<String>) {
+    pub fn finish_with_message(mut self, message: impl Into<String>) {
+        self.finished = true;
         self.callback.finish(self.id, message.into());
+    }
+}
+
+impl Drop for ProgressHandler {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.callback.finish(self.id, "Aborted".to_string());
+        }
     }
 }
