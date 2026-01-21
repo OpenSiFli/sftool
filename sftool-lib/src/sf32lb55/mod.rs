@@ -7,6 +7,7 @@ pub mod reset;
 pub mod speed;
 pub mod write_flash;
 
+use crate::progress::{ProgressOperation, ProgressStatus, StubStage};
 use crate::sf32lb55::ram_command::DownloadStub;
 use crate::{Result, SifliTool, SifliToolBase, SifliToolTrait};
 use serialport::SerialPort;
@@ -86,7 +87,9 @@ impl SF32LB55Tool {
         self.port.clear(serialport::ClearBuffer::All)?;
 
         let progress = self.progress();
-        let spinner = progress.create_spinner("Download stub...");
+        let spinner = progress.create_spinner(ProgressOperation::DownloadStub {
+            stage: StubStage::Start,
+        });
 
         // 1. 下载签名公钥文件 (58X_sig_pub.der)
         tracing::debug!("Loading signature public key file: {}", SIG_PUB_FILE);
@@ -98,19 +101,23 @@ impl SF32LB55Tool {
             )
         })?;
 
-        spinner.set_message("Downloading signature key...");
+        spinner.set_operation(ProgressOperation::DownloadStub {
+            stage: StubStage::SignatureKey,
+        });
         self.download_boot_patch_sigkey(&sig_pub_data.data)?;
 
         // 2. 下载RAM stub文件 - 支持外部 stub 文件
         let chip_memory_key = format!("sf32lb55_{}", self.base.memory_type);
         let stub = load_stub_file(self.base.external_stub_path.as_deref(), &chip_memory_key)?;
 
-        spinner.set_message("Downloading RAM stub...");
+        spinner.set_operation(ProgressOperation::DownloadStub {
+            stage: StubStage::RamStub,
+        });
 
         // 发送下载镜像命令（flashid = 9 对应RAM stub）
         self.download_image(&stub.data, 9)?;
 
-        spinner.finish_with_message("Download stub success!");
+        spinner.finish(ProgressStatus::Success);
 
         tracing::info!("SF32LB55 stub download completed successfully");
         Ok(())

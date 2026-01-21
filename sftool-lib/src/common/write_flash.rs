@@ -1,4 +1,5 @@
 use crate::common::ram_command::{Command, RamCommand, Response};
+use crate::progress::{ProgressOperation, ProgressStatus};
 use crate::{Error, Result, SifliToolTrait, WriteFlashFile};
 use std::io::{BufReader, Read, Write};
 
@@ -12,7 +13,7 @@ impl FlashWriter {
         T: SifliToolTrait + RamCommand,
     {
         let progress = tool.progress();
-        let spinner = progress.create_spinner("Erasing all flash regions...");
+        let spinner = progress.create_spinner(ProgressOperation::EraseAllRegions);
 
         let mut erase_address: Vec<u32> = Vec::new();
         for f in write_flash_files.iter() {
@@ -25,7 +26,7 @@ impl FlashWriter {
             erase_address.push(address);
         }
 
-        spinner.finish_with_message("All flash regions erased");
+        spinner.finish(ProgressStatus::Success);
         Ok(())
     }
 
@@ -35,7 +36,7 @@ impl FlashWriter {
         T: SifliToolTrait + RamCommand,
     {
         let progress = tool.progress();
-        let spinner = progress.create_spinner("Verifying data...");
+        let spinner = progress.create_spinner(ProgressOperation::Verify { address, len });
 
         let response = tool.command(Command::Verify { address, len, crc })?;
         if response != Response::Ok {
@@ -46,7 +47,7 @@ impl FlashWriter {
             )));
         }
 
-        spinner.finish_with_message("Verify success!");
+        spinner.finish(ProgressStatus::Success);
         Ok(())
     }
 
@@ -60,10 +61,10 @@ impl FlashWriter {
         T: SifliToolTrait + RamCommand,
     {
         let progress = tool.progress();
-        let re_download_spinner = progress.create_spinner(format!(
-            "Checking whether a re-download is necessary at address 0x{:08X}...",
-            file.address
-        ));
+        let re_download_spinner = progress.create_spinner(ProgressOperation::CheckRedownload {
+            address: file.address,
+            size: file.file.metadata()?.len(),
+        });
 
         let response = tool.command(Command::Verify {
             address: file.address,
@@ -72,15 +73,18 @@ impl FlashWriter {
         })?;
 
         if response == Response::Ok {
-            re_download_spinner.finish_with_message("No need to re-download, skip!");
+            re_download_spinner.finish(ProgressStatus::Skipped);
             return Ok(());
         }
 
-        re_download_spinner.finish_with_message("Need to re-download");
+        re_download_spinner.finish(ProgressStatus::Required);
 
         let download_bar = progress.create_bar(
             file.file.metadata()?.len(),
-            format!("Download at 0x{:08X}...", file.address),
+            ProgressOperation::WriteFlash {
+                address: file.address,
+                size: file.file.metadata()?.len(),
+            },
         );
 
         let res = tool.command(Command::WriteAndErase {
@@ -114,11 +118,7 @@ impl FlashWriter {
             }
         }
 
-        let end_address = file.address + file.file.metadata()?.len() as u32 - 1;
-        download_bar.finish_with_message(format!(
-            "Downloaded successfully for 0x{:08X}..0x{:08X}",
-            file.address, end_address
-        ));
+        download_bar.finish(ProgressStatus::Success);
 
         // verify
         if verify {
@@ -146,7 +146,10 @@ impl FlashWriter {
         let progress = tool.progress();
         let download_bar = progress.create_bar(
             file.file.metadata()?.len(),
-            format!("Download at 0x{:08X}...", file.address),
+            ProgressOperation::WriteFlash {
+                address: file.address,
+                size: file.file.metadata()?.len(),
+            },
         );
 
         let mut buffer = vec![0u8; packet_size];
@@ -178,11 +181,7 @@ impl FlashWriter {
             download_bar.inc(bytes_read as u64);
         }
 
-        let end_address = file.address + file.file.metadata()?.len() as u32 - 1;
-        download_bar.finish_with_message(format!(
-            "Downloaded successfully for 0x{:08X}..0x{:08X}",
-            file.address, end_address
-        ));
+        download_bar.finish(ProgressStatus::Success);
 
         // verify
         if verify {

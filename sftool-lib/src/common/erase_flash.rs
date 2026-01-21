@@ -1,4 +1,5 @@
 use crate::common::ram_command::{Command, RamCommand};
+use crate::progress::{EraseFlashStyle, EraseRegionStyle, ProgressOperation, ProgressStatus};
 use crate::utils::Utils;
 use crate::{Error, Result, SifliToolTrait};
 
@@ -12,8 +13,10 @@ impl EraseOps {
         T: SifliToolTrait + RamCommand,
     {
         let progress = tool.progress();
-        let progress_bar =
-            progress.create_spinner(format!("Erasing entire flash at 0x{:08X}...", address));
+        let progress_bar = progress.create_spinner(ProgressOperation::EraseFlash {
+            address,
+            style: EraseFlashStyle::Complete,
+        });
 
         // 发送擦除所有命令
         let _ = tool.command(Command::EraseAll { address });
@@ -43,7 +46,7 @@ impl EraseOps {
             }
         }
 
-        progress_bar.finish_with_message("Erase complete");
+        progress_bar.finish(ProgressStatus::Success);
 
         Ok(())
     }
@@ -54,10 +57,11 @@ impl EraseOps {
         T: SifliToolTrait + RamCommand,
     {
         let progress = tool.progress();
-        let progress_bar = progress.create_spinner(format!(
-            "Erasing region at 0x{:08X} (size: 0x{:08X})...",
-            address, len
-        ));
+        let progress_bar = progress.create_spinner(ProgressOperation::EraseRegion {
+            address,
+            len,
+            style: EraseRegionStyle::Range,
+        });
 
         // 发送擦除区域命令
         let _ = tool.command(Command::Erase { address, len });
@@ -88,11 +92,7 @@ impl EraseOps {
             }
         }
 
-        let end_address = address + len - 1;
-        progress_bar.finish_with_message(format!(
-            "Region erased successfully for 0x{:08X}..0x{:08X}",
-            address, end_address
-        ));
+        progress_bar.finish(ProgressStatus::Success);
 
         Ok(())
     }

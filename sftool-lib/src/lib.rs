@@ -27,7 +27,7 @@ pub use crate::read_flash::ReadFlashTrait;
 pub use crate::write_flash::WriteFlashTrait;
 pub use error::{Error, Result};
 
-use crate::progress::{ProgressCallbackArc, ProgressHelper, no_op_progress_callback};
+use crate::progress::{ProgressHelper, ProgressSinkArc, no_op_progress_sink};
 use serialport::SerialPort;
 use std::sync::Arc;
 
@@ -105,7 +105,7 @@ pub struct SifliToolBase {
     pub baud: u32,
     pub connect_attempts: i8,
     pub compat: bool,
-    pub progress_callback: ProgressCallbackArc,
+    pub progress_sink: ProgressSinkArc,
     pub progress_helper: Arc<ProgressHelper>,
     /// 外部 stub 文件路径，如果指定则优先使用外部文件而非内嵌文件
     pub external_stub_path: Option<String>,
@@ -121,8 +121,8 @@ impl SifliToolBase {
         connect_attempts: i8,
         compat: bool,
     ) -> Self {
-        let progress_callback = no_op_progress_callback();
-        let progress_helper = Arc::new(ProgressHelper::new(progress_callback.clone(), 0));
+        let progress_sink = no_op_progress_sink();
+        let progress_helper = Arc::new(ProgressHelper::new(progress_sink.clone(), 0));
         Self {
             port_name,
             before,
@@ -130,7 +130,7 @@ impl SifliToolBase {
             baud,
             connect_attempts,
             compat,
-            progress_callback,
+            progress_sink,
             progress_helper,
             external_stub_path: None,
         }
@@ -144,9 +144,9 @@ impl SifliToolBase {
         baud: u32,
         connect_attempts: i8,
         compat: bool,
-        progress_callback: ProgressCallbackArc,
+        progress_sink: ProgressSinkArc,
     ) -> Self {
-        let progress_helper = Arc::new(ProgressHelper::new(progress_callback.clone(), 0));
+        let progress_helper = Arc::new(ProgressHelper::new(progress_sink.clone(), 0));
         Self {
             port_name,
             before,
@@ -154,7 +154,7 @@ impl SifliToolBase {
             baud,
             connect_attempts,
             compat,
-            progress_callback,
+            progress_sink,
             progress_helper,
             external_stub_path: None,
         }
@@ -169,10 +169,10 @@ impl SifliToolBase {
         baud: u32,
         connect_attempts: i8,
         compat: bool,
-        progress_callback: ProgressCallbackArc,
+        progress_sink: ProgressSinkArc,
         external_stub_path: Option<String>,
     ) -> Self {
-        let progress_helper = Arc::new(ProgressHelper::new(progress_callback.clone(), 0));
+        let progress_helper = Arc::new(ProgressHelper::new(progress_sink.clone(), 0));
         Self {
             port_name,
             before,
@@ -180,7 +180,7 @@ impl SifliToolBase {
             baud,
             connect_attempts,
             compat,
-            progress_callback,
+            progress_sink,
             progress_helper,
             external_stub_path,
         }

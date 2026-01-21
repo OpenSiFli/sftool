@@ -9,6 +9,9 @@ pub mod speed;
 pub mod write_flash;
 
 use crate::common::sifli_debug::SifliDebug;
+use crate::progress::{
+    EraseFlashStyle, EraseRegionStyle, ProgressOperation, ProgressStatus, StubStage,
+};
 use crate::sf32lb52::ram_command::DownloadStub;
 use crate::{Result, SifliTool, SifliToolBase, SifliToolTrait};
 use serialport::SerialPort;
@@ -30,8 +33,10 @@ impl SF32LB52Tool {
         use ram_command::{Command, RamCommand};
 
         let progress = self.progress();
-        let spinner =
-            progress.create_spinner(format!("Erasing entire flash at 0x{:08X}...", address));
+        let spinner = progress.create_spinner(ProgressOperation::EraseFlash {
+            address,
+            style: EraseFlashStyle::Addressed,
+        });
 
         // 发送擦除所有命令
         let _ = self.command(Command::EraseAll { address });
@@ -63,7 +68,7 @@ impl SF32LB52Tool {
             }
         }
 
-        spinner.finish_with_message(format!("Erase flash successfully: 0x{:08X}", address));
+        spinner.finish(ProgressStatus::Success);
 
         Ok(())
     }
@@ -73,8 +78,11 @@ impl SF32LB52Tool {
         use ram_command::{Command, RamCommand};
 
         let progress = self.progress();
-        let spinner =
-            progress.create_spinner(format!("Erasing entire flash at 0x{:08X}...", address));
+        let spinner = progress.create_spinner(ProgressOperation::EraseRegion {
+            address,
+            len,
+            style: EraseRegionStyle::LegacyFlashStartDecimalLength,
+        });
 
         // 发送擦除区域命令
         let _ = self.command(Command::Erase { address, len });
@@ -114,10 +122,7 @@ impl SF32LB52Tool {
             }
         }
 
-        spinner.finish_with_message(format!(
-            "Erase region successfully: 0x{:08X} (length: {} bytes)",
-            address, len
-        ));
+        spinner.finish(ProgressStatus::Success);
 
         Ok(())
     }
@@ -152,16 +157,16 @@ impl SF32LB52Tool {
             }
 
             let progress = self.progress();
-            let spinner = progress.create_spinner("Connecting to chip...");
+            let spinner = progress.create_spinner(ProgressOperation::Connect);
 
             // 尝试连接
             match value {
                 Ok(_) => {
-                    spinner.finish_with_message("Connected success!");
+                    spinner.finish(ProgressStatus::Success);
                     return Ok(());
                 }
                 Err(_) => {
-                    spinner.finish_with_message("Failed to connect to the chip, retrying...");
+                    spinner.finish(ProgressStatus::Retry);
                     std::thread::sleep(Duration::from_millis(500));
                 }
             }
@@ -177,7 +182,9 @@ impl SF32LB52Tool {
         use probe_rs::architecture::arm::core::registers::cortex_m::{PC, SP};
 
         let progress = self.progress();
-        let spinner = progress.create_spinner("Download stub...");
+        let spinner = progress.create_spinner(ProgressOperation::DownloadStub {
+            stage: StubStage::Start,
+        });
 
         // 1. reset and halt
         //    1.1. reset_catch_set
@@ -211,8 +218,7 @@ impl SF32LB52Tool {
         let stub = match load_stub_file(self.base.external_stub_path.as_deref(), &chip_memory_key) {
             Ok(s) => s,
             Err(e) => {
-                spinner
-                    .finish_with_message("No stub file found for the given chip and memory type");
+                spinner.finish(ProgressStatus::NotFound);
                 return Err(e.into());
             }
         };
@@ -259,7 +265,7 @@ impl SF32LB52Tool {
         // 3.2. run
         self.debug_run()?;
 
-        spinner.finish_with_message("Download stub success!");
+        spinner.finish(ProgressStatus::Success);
 
         Ok(())
     }

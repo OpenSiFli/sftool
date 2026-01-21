@@ -13,7 +13,7 @@ mod stub_ops;
 use cli::{Cli, CommandSource, Commands, StubAction, get_command_source, merge_config};
 use config::SfToolConfig;
 use config_exec::execute_config_command;
-use progress::create_indicatif_progress_callback;
+use progress::create_progress_sink;
 use serial::{check_port_available, normalize_port_name};
 use stub_ops::{
     chip_key, execute_stub_clear, execute_stub_config_command, execute_stub_read,
@@ -120,9 +120,9 @@ fn main() -> Result<()> {
             connect_attempts,
             compat,
             if quiet {
-                sftool_lib::progress::no_op_progress_callback()
+                sftool_lib::progress::no_op_progress_sink()
             } else {
-                create_indicatif_progress_callback()
+                create_progress_sink()
             },
             stub_path,
         ),

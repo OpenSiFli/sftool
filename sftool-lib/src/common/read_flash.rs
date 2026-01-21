@@ -1,5 +1,5 @@
 use crate::common::ram_command::{Command, RamCommand};
-use crate::progress::ProgressHandler;
+use crate::progress::{ProgressHandle, ProgressOperation, ProgressStatus};
 use crate::utils::Utils;
 use crate::{Error, Result, SifliToolTrait};
 use crc::{Algorithm, Crc};
@@ -75,7 +75,7 @@ impl FlashReader {
     {
         let progress = tool.progress();
         let progress_bar =
-            progress.create_bar(size as u64, format!("Reading from 0x{:08X}...", address));
+            progress.create_bar(size as u64, ProgressOperation::ReadFlash { address, size });
 
         let mut temp_file = tempfile()?;
 
@@ -103,7 +103,7 @@ impl FlashReader {
             });
         }
 
-        progress_bar.finish_with_message("Read complete");
+        progress_bar.finish(ProgressStatus::Success);
 
         temp_file.seek(std::io::SeekFrom::Start(0))?;
         let mut output_file = File::create(output_path)?;
@@ -155,7 +155,7 @@ impl FlashReader {
         port: &mut Box<dyn SerialPort>,
         size: u32,
         temp_file: &mut File,
-        progress_bar: &ProgressHandler,
+        progress_bar: &ProgressHandle,
         address: u32,
     ) -> Result<u32> {
         let mut remaining = size as usize;

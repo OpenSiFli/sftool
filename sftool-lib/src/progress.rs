@@ -1,9 +1,10 @@
-//! 进度条回调系统
+//! 进度事件系统
 //!
-//! 这个模块定义了进度条的抽象接口，允许用户在不同环境（CLI、GUI等）中
-//! 自定义进度条的显示方式。
+//! 这个模块定义了进度的结构化上下文与事件接口，便于在 CLI/GUI
+//! 等不同前端进行统一格式化与呈现。
 
-use std::sync::Arc;
+use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 /// 进度条类型
 #[derive(Debug, Clone)]
@@ -14,184 +15,258 @@ pub enum ProgressType {
     Bar { total: u64 },
 }
 
-/// 进度条状态
+/// Stub 下载阶段
 #[derive(Debug, Clone)]
-pub struct ProgressInfo {
-    /// 进度条类型
-    pub progress_type: ProgressType,
-    /// 步骤前缀（通常是十六进制步骤号）
-    pub prefix: String,
-    /// 当前消息
-    pub message: String,
-    /// 当前进度（仅对 Bar 类型有效）
-    pub current: Option<u64>,
+pub enum StubStage {
+    Start,
+    SignatureKey,
+    RamStub,
 }
 
-/// 进度回调 trait
-///
-/// 实现此 trait 以自定义进度条的显示方式
-pub trait ProgressCallback: Send + Sync {
-    /// 开始一个新的进度条
-    ///
-    /// # 参数
-    /// - `info`: 进度条信息
-    ///
-    /// # 返回值
-    /// 返回一个进度条 ID，用于后续的更新和完成操作
-    fn start(&self, info: ProgressInfo) -> ProgressId;
+/// 整体擦除样式
+#[derive(Debug, Clone)]
+pub enum EraseFlashStyle {
+    Complete,
+    Addressed,
+}
 
-    /// 更新进度条的消息
-    ///
-    /// # 参数
-    /// - `id`: 进度条 ID
-    /// - `message`: 新的消息
-    fn update_message(&self, id: ProgressId, message: String);
+/// 区域擦除样式
+#[derive(Debug, Clone)]
+pub enum EraseRegionStyle {
+    LegacyFlashStartDecimalLength,
+    HexLength,
+    Range,
+}
 
-    /// 增加进度（仅对 Bar 类型有效）
-    ///
-    /// # 参数
-    /// - `id`: 进度条 ID
-    /// - `delta`: 增加的进度量
-    fn increment(&self, id: ProgressId, delta: u64);
+/// 进度操作类型
+#[derive(Debug, Clone)]
+pub enum ProgressOperation {
+    Connect,
+    DownloadStub {
+        stage: StubStage,
+    },
+    EraseFlash {
+        address: u32,
+        style: EraseFlashStyle,
+    },
+    EraseRegion {
+        address: u32,
+        len: u32,
+        style: EraseRegionStyle,
+    },
+    EraseAllRegions,
+    Verify {
+        address: u32,
+        len: u32,
+    },
+    CheckRedownload {
+        address: u32,
+        size: u64,
+    },
+    WriteFlash {
+        address: u32,
+        size: u64,
+    },
+    ReadFlash {
+        address: u32,
+        size: u32,
+    },
+}
 
-    /// 完成进度条
-    ///
-    /// # 参数
-    /// - `id`: 进度条 ID
-    /// - `final_message`: 最终消息
-    fn finish(&self, id: ProgressId, final_message: String);
+/// 进度上下文
+#[derive(Debug, Clone)]
+pub struct ProgressContext {
+    /// 步骤号
+    pub step: i32,
+    /// 进度条类型
+    pub progress_type: ProgressType,
+    /// 操作语义
+    pub operation: ProgressOperation,
+    /// 当前进度（仅对 Bar 类型有效）
+    pub current: Option<u64>,
 }
 
 /// 进度条 ID 类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ProgressId(pub u64);
 
-/// 默认的空进度回调实现
-///
-/// 这个实现不会产生任何输出，适用于不需要进度显示的场景
+/// 进度完成状态
+#[derive(Debug, Clone)]
+pub enum ProgressStatus {
+    Success,
+    Retry,
+    Skipped,
+    Required,
+    NotFound,
+    Failed(String),
+    Aborted,
+}
+
+/// 进度事件
+#[derive(Debug, Clone)]
+pub enum ProgressEvent {
+    Start {
+        id: ProgressId,
+        ctx: ProgressContext,
+    },
+    Update {
+        id: ProgressId,
+        ctx: ProgressContext,
+    },
+    Advance {
+        id: ProgressId,
+        delta: u64,
+    },
+    Finish {
+        id: ProgressId,
+        status: ProgressStatus,
+    },
+}
+
+/// 进度事件接收器
+pub trait ProgressSink: Send + Sync {
+    fn on_event(&self, event: ProgressEvent);
+}
+
+/// 进度事件接收器的包装器
+pub type ProgressSinkArc = Arc<dyn ProgressSink>;
+
+/// 默认的空进度接收器实现
 #[derive(Debug, Default)]
-pub struct NoOpProgressCallback;
+pub struct NoOpProgressSink;
 
-impl ProgressCallback for NoOpProgressCallback {
-    fn start(&self, _info: ProgressInfo) -> ProgressId {
-        ProgressId(0)
-    }
-
-    fn update_message(&self, _id: ProgressId, _message: String) {}
-
-    fn increment(&self, _id: ProgressId, _delta: u64) {}
-
-    fn finish(&self, _id: ProgressId, _final_message: String) {}
+impl ProgressSink for NoOpProgressSink {
+    fn on_event(&self, _event: ProgressEvent) {}
 }
 
-/// 进度回调的包装器，便于使用
-pub type ProgressCallbackArc = Arc<dyn ProgressCallback>;
-
-/// 创建默认的空进度回调
-pub fn no_op_progress_callback() -> ProgressCallbackArc {
-    Arc::new(NoOpProgressCallback)
+/// 创建默认的空进度接收器
+pub fn no_op_progress_sink() -> ProgressSinkArc {
+    Arc::new(NoOpProgressSink)
 }
 
-/// 进度条助手结构体
-///
-/// 提供便捷的方法来创建和管理进度条
+/// 进度助手结构体
 pub struct ProgressHelper {
-    callback: ProgressCallbackArc,
-    step_counter: Arc<std::sync::atomic::AtomicI32>,
+    sink: ProgressSinkArc,
+    step_counter: Arc<AtomicI32>,
+    id_counter: Arc<AtomicU64>,
 }
 
 impl ProgressHelper {
     /// 创建新的进度助手，从指定的初始步骤开始
-    pub fn new(callback: ProgressCallbackArc, initial_step: i32) -> Self {
+    pub fn new(sink: ProgressSinkArc, initial_step: i32) -> Self {
         Self {
-            callback,
-            step_counter: Arc::new(std::sync::atomic::AtomicI32::new(initial_step)),
+            sink,
+            step_counter: Arc::new(AtomicI32::new(initial_step)),
+            id_counter: Arc::new(AtomicU64::new(1)),
         }
     }
 
     /// 获取下一个步骤号并递增计数器
     fn next_step(&self) -> i32 {
-        self.step_counter
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        self.step_counter.fetch_add(1, Ordering::SeqCst)
+    }
+
+    /// 获取下一个进度条 ID
+    fn next_id(&self) -> ProgressId {
+        ProgressId(self.id_counter.fetch_add(1, Ordering::SeqCst))
     }
 
     /// 创建一个旋转进度条
-    pub fn create_spinner(&self, message: impl Into<String>) -> ProgressHandler {
+    pub fn create_spinner(&self, operation: ProgressOperation) -> ProgressHandle {
         let step = self.next_step();
-        let info = ProgressInfo {
+        let id = self.next_id();
+        let ctx = ProgressContext {
+            step,
             progress_type: ProgressType::Spinner,
-            prefix: format!("0x{:02X}", step),
-            message: message.into(),
+            operation,
             current: None,
         };
-        let id = self.callback.start(info);
-        ProgressHandler {
-            callback: Arc::clone(&self.callback),
+        self.sink.on_event(ProgressEvent::Start {
             id,
-            finished: false,
-        }
+            ctx: ctx.clone(),
+        });
+        ProgressHandle::new(Arc::clone(&self.sink), id, ctx)
     }
 
     /// 创建一个条形进度条
-    pub fn create_bar(&self, total: u64, message: impl Into<String>) -> ProgressHandler {
+    pub fn create_bar(&self, total: u64, operation: ProgressOperation) -> ProgressHandle {
         let step = self.next_step();
-        let info = ProgressInfo {
+        let id = self.next_id();
+        let ctx = ProgressContext {
+            step,
             progress_type: ProgressType::Bar { total },
-            prefix: format!("0x{:02X}", step),
-            message: message.into(),
+            operation,
             current: Some(0),
         };
-        let id = self.callback.start(info);
-        ProgressHandler {
-            callback: Arc::clone(&self.callback),
+        self.sink.on_event(ProgressEvent::Start {
             id,
-            finished: false,
-        }
+            ctx: ctx.clone(),
+        });
+        ProgressHandle::new(Arc::clone(&self.sink), id, ctx)
     }
 
     /// 获取当前步骤号（不递增）
     pub fn current_step(&self) -> i32 {
-        self.step_counter.load(std::sync::atomic::Ordering::SeqCst)
+        self.step_counter.load(Ordering::SeqCst)
     }
 
     /// 同步步骤计数器到外部计数器
-    /// 这个方法用于将内部计数器的值同步到工具的 step 字段
     pub fn sync_step_to_external(&self, external_step: &mut i32) {
         *external_step = self.current_step();
     }
 }
 
 /// 进度条处理器
-///
-/// 用于操作单个进度条实例
-pub struct ProgressHandler {
-    callback: ProgressCallbackArc,
+pub struct ProgressHandle {
+    sink: ProgressSinkArc,
     id: ProgressId,
+    context: Mutex<ProgressContext>,
     finished: bool,
 }
 
-impl ProgressHandler {
-    /// 更新消息
-    pub fn set_message(&self, message: impl Into<String>) {
-        self.callback.update_message(self.id, message.into());
+impl ProgressHandle {
+    fn new(sink: ProgressSinkArc, id: ProgressId, context: ProgressContext) -> Self {
+        Self {
+            sink,
+            id,
+            context: Mutex::new(context),
+            finished: false,
+        }
+    }
+
+    /// 更新操作语义
+    pub fn set_operation(&self, operation: ProgressOperation) {
+        let mut ctx = self.context.lock().unwrap();
+        ctx.operation = operation;
+        self.sink.on_event(ProgressEvent::Update {
+            id: self.id,
+            ctx: ctx.clone(),
+        });
     }
 
     /// 增加进度
     pub fn inc(&self, delta: u64) {
-        self.callback.increment(self.id, delta);
+        self.sink
+            .on_event(ProgressEvent::Advance { id: self.id, delta });
     }
 
     /// 完成进度条
-    pub fn finish_with_message(mut self, message: impl Into<String>) {
+    pub fn finish(mut self, status: ProgressStatus) {
         self.finished = true;
-        self.callback.finish(self.id, message.into());
+        self.sink.on_event(ProgressEvent::Finish {
+            id: self.id,
+            status,
+        });
     }
 }
 
-impl Drop for ProgressHandler {
+impl Drop for ProgressHandle {
     fn drop(&mut self) {
         if !self.finished {
-            self.callback.finish(self.id, "Aborted".to_string());
+            self.sink.on_event(ProgressEvent::Finish {
+                id: self.id,
+                status: ProgressStatus::Aborted,
+            });
         }
     }
 }
