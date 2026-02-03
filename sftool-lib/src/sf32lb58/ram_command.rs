@@ -7,7 +7,13 @@ pub use crate::common::ram_command::{Command, DownloadStub, RamCommand, Response
 
 impl RamCommand for SF32LB58Tool {
     fn command(&mut self, cmd: Command) -> Result<Response> {
-        RamOps::send_command_and_wait_response(&mut self.port, cmd, self.base.memory_type.as_str())
+        let cmd_string = self.format_command(&cmd);
+        RamOps::send_command_and_wait_response(
+            &mut self.port,
+            cmd,
+            &cmd_string,
+            self.base.memory_type.as_str(),
+        )
     }
 
     fn send_data(&mut self, data: &[u8]) -> Result<Response> {

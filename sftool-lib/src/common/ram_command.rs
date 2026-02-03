@@ -50,6 +50,9 @@ pub const RESPONSE_STR_TABLE: [&str; 3] = ["OK", "Fail", "RX_WAIT"];
 pub trait RamCommand {
     fn command(&mut self, cmd: Command) -> Result<Response>;
     fn send_data(&mut self, data: &[u8]) -> Result<Response>;
+    fn format_command(&self, cmd: &Command) -> String {
+        cmd.to_string()
+    }
 }
 
 /// Stub下载trait，定义了下载stub的接口
@@ -85,12 +88,13 @@ impl RamOps {
     pub fn send_command_and_wait_response(
         port: &mut Box<dyn SerialPort>,
         cmd: Command,
+        command_str: &str,
         memory_type: &str,
     ) -> Result<Response> {
         tracing::debug!("command: {:?}", cmd);
 
         // 发送命令
-        port.write_all(cmd.to_string().as_bytes())?;
+        port.write_all(command_str.as_bytes())?;
         port.flush()?;
         // 在macOS上，FTDI的驱动似乎不高兴我们清除输入缓冲区，这可能会导致后续要发送的内容被截断
         // 因此这个地方我们不再需要清理缓冲区，应该在后续的操作中滤除掉额外的信息

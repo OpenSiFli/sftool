@@ -8,7 +8,13 @@ pub use crate::common::ram_command::{Command, DownloadStub, RamCommand, Response
 
 impl RamCommand for SF32LB52Tool {
     fn command(&mut self, cmd: Command) -> Result<Response> {
-        RamOps::send_command_and_wait_response(&mut self.port, cmd, self.base.memory_type.as_str())
+        let cmd_string = self.format_command(&cmd);
+        RamOps::send_command_and_wait_response(
+            &mut self.port,
+            cmd,
+            &cmd_string,
+            self.base.memory_type.as_str(),
+        )
     }
 
     fn send_data(&mut self, data: &[u8]) -> Result<Response> {
@@ -17,6 +23,15 @@ impl RamCommand for SF32LB52Tool {
             ..Default::default()
         };
         RamOps::send_data_and_wait_response(&mut self.port, data, &config)
+    }
+
+    fn format_command(&self, cmd: &Command) -> String {
+        match cmd {
+            Command::EraseAll { address } => {
+                format!("burn_erase_all_factory 0x{address:08x}\r")
+            }
+            _ => cmd.to_string(),
+        }
     }
 }
 
