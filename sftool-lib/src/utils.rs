@@ -18,6 +18,10 @@ pub const ELF_MAGIC: &[u8] = &[0x7F, 0x45, 0x4C, 0x46]; // ELF file magic number
 
 pub struct Utils;
 impl Utils {
+    const HEX_SEGMENT_GAP_LIMIT: u32 = 0x1000;
+    const DEFAULT_HEX_SECTOR_SIZE: u32 = 0x1000;
+    const HEX_GAP_FILL_BYTE: u8 = 0xFF;
+
     pub fn str_to_u32(s: &str) -> Result<u32> {
         let s = s.trim();
 
@@ -230,21 +234,12 @@ impl Utils {
                     let absolute_address = current_base_address + offset as u32;
 
                     // Check if we need to start a new segment based on address continuity
-                    let should_start_new_segment = if let Some(ref _temp_file) = current_temp_file {
-                        let current_end_address = current_segment_start + current_file_offset;
-                        let expected_start_address = absolute_address;
-
-                        // If the new data is not continuous with existing data, start new segment
-                        // Allow for some reasonable gap (e.g., 4KB) to be filled, but beyond that start new segment
-                        let gap_size = if expected_start_address >= current_end_address {
-                            expected_start_address - current_end_address
-                        } else {
-                            // Overlapping or backwards, definitely need new segment
-                            u32::MAX
-                        };
-
-                        // If gap is too large (> 4KB), start new segment
-                        gap_size > 0x1000
+                    let should_start_new_segment = if current_temp_file.is_some() {
+                        Self::should_start_new_hex_segment(
+                            current_segment_start,
+                            current_file_offset,
+                            absolute_address,
+                        )
                     } else {
                         false // No current file, will create one below
                     };
@@ -273,7 +268,7 @@ impl Utils {
                         // Fill gaps with 0xFF if they exist
                         if expected_file_offset > current_file_offset {
                             let gap_size = expected_file_offset - current_file_offset;
-                            let fill_data = vec![0xFF; gap_size as usize];
+                            let fill_data = vec![Self::HEX_GAP_FILL_BYTE; gap_size as usize];
                             temp_file.write_all(&fill_data)?;
                             current_file_offset = expected_file_offset;
                         }
@@ -350,21 +345,12 @@ impl Utils {
                     let absolute_address = current_base_address + offset as u32;
 
                     // Check if we need to start a new segment based on address continuity
-                    let should_start_new_segment = if let Some(ref _temp_file) = current_temp_file {
-                        let current_end_address = current_segment_start + current_file_offset;
-                        let expected_start_address = absolute_address;
-
-                        // If the new data is not continuous with existing data, start new segment
-                        // Allow for some reasonable gap (e.g., 4KB) to be filled, but beyond that start new segment
-                        let gap_size = if expected_start_address >= current_end_address {
-                            expected_start_address - current_end_address
-                        } else {
-                            // Overlapping or backwards, definitely need new segment
-                            u32::MAX
-                        };
-
-                        // If gap is too large (> 4KB), start new segment
-                        gap_size > 0x1000
+                    let should_start_new_segment = if current_temp_file.is_some() {
+                        Self::should_start_new_hex_segment(
+                            current_segment_start,
+                            current_file_offset,
+                            absolute_address,
+                        )
                     } else {
                         false // No current file, will create one below
                     };
@@ -393,7 +379,7 @@ impl Utils {
                         // Fill gaps with 0xFF if they exist
                         if expected_file_offset > current_file_offset {
                             let gap_size = expected_file_offset - current_file_offset;
-                            let fill_data = vec![0xFF; gap_size as usize];
+                            let fill_data = vec![Self::HEX_GAP_FILL_BYTE; gap_size as usize];
                             temp_file.write_all(&fill_data)?;
                             current_file_offset = expected_file_offset;
                         }
@@ -519,6 +505,28 @@ impl Utils {
             crc32,
         });
         Ok(())
+    }
+
+    /// HEX段分段策略：
+    /// - 地址回退/重叠：分段
+    /// - 间隙 <= 4KB：不分段（以0xFF填充）
+    /// - 间隙 > 4KB：只有下一段起始地址为sector对齐时才分段
+    fn should_start_new_hex_segment(
+        current_segment_start: u32,
+        current_file_offset: u32,
+        next_address: u32,
+    ) -> bool {
+        let current_end_address = current_segment_start.saturating_add(current_file_offset);
+        if next_address < current_end_address {
+            return true;
+        }
+
+        let gap_size = next_address - current_end_address;
+        if gap_size <= Self::HEX_SEGMENT_GAP_LIMIT {
+            return false;
+        }
+
+        next_address.is_multiple_of(Self::DEFAULT_HEX_SECTOR_SIZE)
     }
 
     /// 解析读取文件信息 (filename@address:size格式)

@@ -426,6 +426,33 @@ fn test_hex_non_continuous_segments_not_merged() {
 }
 
 #[test]
+fn test_hex_non_aligned_large_gap_segments_are_merged() {
+    // Test that a large-gap second segment is still merged when it is not sector aligned
+    // 0x1201FFF0 is not aligned to 4KB sector boundary.
+    let hex_content = ":020000041201E7\n:0400000001020304F2\n:04FFF0001122334463\n:00000001FF\n";
+
+    let mut temp_hex = NamedTempFile::new().unwrap();
+    temp_hex.write_all(hex_content.as_bytes()).unwrap();
+
+    let result = Utils::hex_to_write_flash_files(temp_hex.path()).unwrap();
+
+    // Should stay as a single segment because second block is not 4KB-aligned
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].address, 0x12010000);
+
+    let file_size = result[0].file.metadata().unwrap().len() as usize;
+    assert_eq!(file_size, 0xFFF4);
+
+    let mut file_data = Vec::new();
+    let mut file = &result[0].file;
+    file.read_to_end(&mut file_data).unwrap();
+
+    assert_eq!(&file_data[0..4], &[0x01, 0x02, 0x03, 0x04]);
+    assert!(file_data[4..0xFFF0].iter().all(|&b| b == 0xFF));
+    assert_eq!(&file_data[0xFFF0..0xFFF4], &[0x11, 0x22, 0x33, 0x44]);
+}
+
+#[test]
 fn test_hex_with_base_continuous_segments_merging() {
     // Test continuous segment merging with base address override
     // Similar to test_hex_continuous_segments_merging but with base override
@@ -457,6 +484,33 @@ fn test_hex_with_base_continuous_segments_merging() {
         &file_data,
         &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
     );
+}
+
+#[test]
+fn test_hex_with_base_non_aligned_large_gap_segments_are_merged() {
+    // Test the same behavior via hex_with_base_to_write_flash_files path.
+    let hex_content = ":020000040801F1\n:0400000001020304F2\n:04FFF0001122334463\n:00000001FF\n";
+
+    let mut temp_hex = NamedTempFile::new().unwrap();
+    temp_hex.write_all(hex_content.as_bytes()).unwrap();
+
+    // 0x0801 will be replaced to 0x1201 when override is 0x12000000
+    let result =
+        Utils::hex_with_base_to_write_flash_files(temp_hex.path(), Some(0x12000000)).unwrap();
+
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].address, 0x12010000);
+
+    let file_size = result[0].file.metadata().unwrap().len() as usize;
+    assert_eq!(file_size, 0xFFF4);
+
+    let mut file_data = Vec::new();
+    let mut file = &result[0].file;
+    file.read_to_end(&mut file_data).unwrap();
+
+    assert_eq!(&file_data[0..4], &[0x01, 0x02, 0x03, 0x04]);
+    assert!(file_data[4..0xFFF0].iter().all(|&b| b == 0xFF));
+    assert_eq!(&file_data[0xFFF0..0xFFF4], &[0x11, 0x22, 0x33, 0x44]);
 }
 
 #[test]
