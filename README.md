@@ -39,6 +39,23 @@ cargo build --release
 # ./target/release/sftool
 ```
 
+## Skills
+
+本仓库提供一个通用 `sftool` skill，可通过社区 `skills` CLI 安装到 Claude Code、Codex 和 GitHub Copilot。
+
+```bash
+npx skills add OpenSiFli/sftool
+
+# 指定技能和目标 agent
+npx skills add OpenSiFli/sftool --skill sftool -a claude-code
+npx skills add OpenSiFli/sftool --skill sftool -a codex
+npx skills add OpenSiFli/sftool --skill sftool -a github-copilot
+```
+
+使用前请确保本机已经能直接调用 `sftool`，或者设置 `SFTOOL_BIN=/path/to/sftool`。该 skill 会先检查 `PATH` 和 `SFTOOL_BIN`；如果找不到命令，会立即停止并提示 LLM 环境配置有误。
+
+该 skill 覆盖固件刷写、读回、`config` JSON 模板、区域擦除和常见排障，安装内容位于 `skills/sftool/`。
+
 ## 使用方法
 
 ### 基本命令格式

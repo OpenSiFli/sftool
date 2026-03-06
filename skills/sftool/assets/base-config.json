@@ -1,0 +1,22 @@
+{
+  "chip": "SF32LB52",
+  "memory": "nor",
+  "port": "/dev/ttyUSB0",
+  "baud": 1000000,
+  "before": "default_reset",
+  "after": "soft_reset",
+  "connect_attempts": 3,
+  "compat": false,
+  "quiet": false,
+  "write_flash": {
+    "verify": true,
+    "erase_all": false,
+    "no_compress": false,
+    "files": [
+      {
+        "path": "replace-me.bin",
+        "address": "0x12020000"
+      }
+    ]
+  }
+}

@@ -49,6 +49,23 @@ cargo build --release
 # ./target/release/sftool
 ```
 
+## Skills
+
+This repository ships a single `sftool` skill that can be installed with the community `skills` CLI for Claude Code, Codex, and GitHub Copilot.
+
+```bash
+npx skills add OpenSiFli/sftool
+
+# Install the explicit skill into a specific agent
+npx skills add OpenSiFli/sftool --skill sftool -a claude-code
+npx skills add OpenSiFli/sftool --skill sftool -a codex
+npx skills add OpenSiFli/sftool --skill sftool -a github-copilot
+```
+
+Make sure the local machine can already run `sftool`, or set `SFTOOL_BIN=/path/to/sftool` first. The skill checks `PATH` and `SFTOOL_BIN` before doing real work; if the binary is missing, it stops immediately and tells the agent that the environment is misconfigured.
+
+The skill covers firmware flashing, readback, `config` JSON templates, region erases, and common troubleshooting. The installable content lives in `skills/sftool/`.
+
 ## Usage
 
 ### Basic Command Format
