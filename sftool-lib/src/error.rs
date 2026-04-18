@@ -11,9 +11,6 @@ pub enum Error {
     #[error(transparent)]
     Serial(#[from] serialport::Error),
 
-    #[error("probe-rs error: {0}")]
-    ProbeRs(#[from] probe_rs::Error),
-
     #[error("Intel HEX parse error: {0}")]
     IntelHex(#[from] ihex::ReaderError),
 
