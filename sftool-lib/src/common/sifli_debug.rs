@@ -1,6 +1,4 @@
 use crate::{Error, Result, SifliTool};
-use probe_rs::architecture::arm::armv8m::Dcrdr;
-use probe_rs::{MemoryMappedRegister, memory_mapped_bitfield_register};
 use std::cmp::{max, min};
 use std::fmt;
 use std::io::{BufReader, BufWriter, Read, Write};
@@ -8,6 +6,18 @@ use std::time::{Duration, Instant};
 
 pub const START_WORD: [u8; 2] = [0x7E, 0x79];
 pub const DEFUALT_RECV_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// ARM Cortex-M CoreSight register addresses (ARM DDI 0403E.b, Section C1.6)
+const DHCSR_ADDR: u32 = 0xE000_EDF0;
+const DCRSR_ADDR: u32 = 0xE000_EDF4;
+const DCRDR_ADDR: u32 = 0xE000_EDF8;
+/// Application Interrupt and Reset Control Register (ARMv7-M DDI 0403E.b B3.2.6)
+pub const AIRCR_ADDR: u32 = 0xE000_ED0C;
+/// Debug Exception and Monitor Control Register (ARMv7-M DDI 0403E.b C1.6.5)
+pub const DEMCR_ADDR: u32 = 0xE000_EDFC;
+/// ARM Cortex-M core register indices (ARM DDI 0403E.b B1.2)
+pub const REG_SP: u16 = 13;
+pub const REG_PC: u16 = 15;
 
 #[derive(Debug)]
 pub enum SifliUartCommand<'a> {
@@ -90,32 +100,64 @@ impl fmt::Display for SifliUartResponse {
     }
 }
 
-memory_mapped_bitfield_register! {
-    pub struct Dcrsr(u32);
-    0xE000_EDF4, "DCRSR",
-    impl From;
-    pub _, set_regwnr: 16;
-    // If the processor does not implement the FP extension the REGSEL field is bits `[4:0]`, and bits `[6:5]` are Reserved, SBZ.
-    pub _, set_regsel: 6,0;
+/// ARM Debug Core Register Selector Register (DCRSR), ARMv7-M DDI 0403E.b C1.6.3
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Dcrsr(pub u32);
+
+impl Dcrsr {
+    pub fn set_regwnr(&mut self, val: bool) {
+        if val {
+            self.0 |= 1 << 16;
+        } else {
+            self.0 &= !(1 << 16);
+        }
+    }
+    // If the processor does not implement the FP extension the REGSEL field is bits `[4:0]`,
+    // and bits `[6:5]` are Reserved, SBZ.
+    pub fn set_regsel(&mut self, val: u32) {
+        self.0 = (self.0 & !0x7F) | (val & 0x7F);
+    }
 }
 
-memory_mapped_bitfield_register! {
-    pub struct Dhcsr(u32);
-    0xE000_EDF0, "DHCSR",
-    impl From;
-    pub s_reset_st, _: 25;
-    pub s_retire_st, _: 24;
-    pub s_lockup, _: 19;
-    pub s_sleep, _: 18;
-    pub s_halt, _: 17;
-    pub s_regrdy, _: 16;
-    pub c_maskints, set_c_maskints: 3;
-    pub c_step, set_c_step: 2;
-    pub c_halt, set_c_halt: 1;
-    pub c_debugen, set_c_debugen: 0;
+impl From<u32> for Dcrsr {
+    fn from(val: u32) -> Self {
+        Self(val)
+    }
 }
+impl From<Dcrsr> for u32 {
+    fn from(val: Dcrsr) -> u32 {
+        val.0
+    }
+}
+
+/// ARM Debug Halting Control and Status Register (DHCSR), ARMv7-M DDI 0403E.b C1.6.2
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Dhcsr(pub u32);
 
 impl Dhcsr {
+    pub fn s_reset_st(&self) -> bool { self.0 & (1 << 25) != 0 }
+    pub fn s_retire_st(&self) -> bool { self.0 & (1 << 24) != 0 }
+    pub fn s_lockup(&self) -> bool { self.0 & (1 << 19) != 0 }
+    pub fn s_sleep(&self) -> bool { self.0 & (1 << 18) != 0 }
+    pub fn s_halt(&self) -> bool { self.0 & (1 << 17) != 0 }
+    pub fn s_regrdy(&self) -> bool { self.0 & (1 << 16) != 0 }
+    pub fn c_maskints(&self) -> bool { self.0 & (1 << 3) != 0 }
+    pub fn set_c_maskints(&mut self, val: bool) {
+        if val { self.0 |= 1 << 3; } else { self.0 &= !(1 << 3); }
+    }
+    pub fn c_step(&self) -> bool { self.0 & (1 << 2) != 0 }
+    pub fn set_c_step(&mut self, val: bool) {
+        if val { self.0 |= 1 << 2; } else { self.0 &= !(1 << 2); }
+    }
+    pub fn c_halt(&self) -> bool { self.0 & (1 << 1) != 0 }
+    pub fn set_c_halt(&mut self, val: bool) {
+        if val { self.0 |= 1 << 1; } else { self.0 &= !(1 << 1); }
+    }
+    pub fn c_debugen(&self) -> bool { self.0 & 1 != 0 }
+    pub fn set_c_debugen(&mut self, val: bool) {
+        if val { self.0 |= 1; } else { self.0 &= !1; }
+    }
+
     /// This function sets the bit to enable writes to this register.
     ///
     /// C1.6.3 Debug Halting Control and Status Register, DHCSR:
@@ -126,6 +168,57 @@ impl Dhcsr {
         self.0 &= !(0xffff << 16);
         self.0 |= 0xa05f << 16;
     }
+}
+
+impl From<u32> for Dhcsr {
+    fn from(val: u32) -> Self {
+        Self(val)
+    }
+}
+impl From<Dhcsr> for u32 {
+    fn from(val: Dhcsr) -> u32 {
+        val.0
+    }
+}
+
+/// Application Interrupt and Reset Control Register (ARMv7-M DDI 0403E.b B3.2.6)
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Aircr(pub u32);
+
+impl Aircr {
+    /// Write the VECTKEY field (required to enable writes to bits [15:0]).
+    pub fn vectkey(&mut self) {
+        self.0 = (self.0 & 0x0000_FFFF) | (0x05FA << 16);
+    }
+    /// Request a system-level reset.
+    pub fn set_sysresetreq(&mut self, val: bool) {
+        if val { self.0 |= 1 << 2; } else { self.0 &= !(1 << 2); }
+    }
+}
+
+impl From<u32> for Aircr {
+    fn from(val: u32) -> Self { Self(val) }
+}
+impl From<Aircr> for u32 {
+    fn from(val: Aircr) -> u32 { val.0 }
+}
+
+/// Debug Exception and Monitor Control Register (ARMv7-M DDI 0403E.b C1.6.5)
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Demcr(pub u32);
+
+impl Demcr {
+    /// Enable halting debug trap on reset (VC_CORERESET, bit 0).
+    pub fn set_vc_corereset(&mut self, val: bool) {
+        if val { self.0 |= 1; } else { self.0 &= !1; }
+    }
+}
+
+impl From<u32> for Demcr {
+    fn from(val: u32) -> Self { Self(val) }
+}
+impl From<Demcr> for u32 {
+    fn from(val: Demcr) -> u32 { val.0 }
 }
 
 pub trait SifliDebug {
@@ -458,13 +551,13 @@ pub mod common_debug {
         addr: u16,
         value: u32,
     ) -> Result<()> {
-        debug_write_word32_impl::<T, F>(tool, Dcrdr::get_mmio_address() as u32, value)?;
+        debug_write_word32_impl::<T, F>(tool, DCRDR_ADDR, value)?;
 
         let mut dcrsr_val = Dcrsr(0);
         dcrsr_val.set_regwnr(true); // Perform a write.
         dcrsr_val.set_regsel(addr.into()); // The address of the register to write.
 
-        debug_write_word32_impl::<T, F>(tool, Dcrsr::get_mmio_address() as u32, dcrsr_val.into())?;
+        debug_write_word32_impl::<T, F>(tool, DCRSR_ADDR, dcrsr_val.into())?;
 
         // self.wait_for_core_register_transfer(Duration::from_millis(100))?;
         std::thread::sleep(Duration::from_millis(10));
@@ -483,7 +576,7 @@ pub mod common_debug {
         value.set_c_maskints(true);
         value.enable_write();
 
-        debug_write_word32_impl::<T, F>(tool, Dhcsr::get_mmio_address() as u32, value.into())?;
+        debug_write_word32_impl::<T, F>(tool, DHCSR_ADDR, value.into())?;
 
         std::thread::sleep(Duration::from_millis(10));
         Ok(())
@@ -498,7 +591,7 @@ pub mod common_debug {
         value.set_c_debugen(true);
         value.enable_write();
 
-        debug_write_word32_impl::<T, F>(tool, Dhcsr::get_mmio_address() as u32, value.into())?;
+        debug_write_word32_impl::<T, F>(tool, DHCSR_ADDR, value.into())?;
 
         std::thread::sleep(Duration::from_millis(100));
         Ok(())
@@ -511,7 +604,7 @@ pub mod common_debug {
         value.set_c_debugen(true);
         value.enable_write();
 
-        debug_write_word32_impl::<T, F>(tool, Dhcsr::get_mmio_address() as u32, value.into())?;
+        debug_write_word32_impl::<T, F>(tool, DHCSR_ADDR, value.into())?;
         std::thread::sleep(Duration::from_millis(10));
         Ok(())
     }

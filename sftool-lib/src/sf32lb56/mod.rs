@@ -326,11 +326,9 @@ impl SF32LB56Tool {
     }
 
     pub fn download_stub_impl(&mut self) -> Result<()> {
+        use crate::common::sifli_debug::{Aircr, Demcr, AIRCR_ADDR, DEMCR_ADDR, REG_PC, REG_SP};
         use crate::common::sifli_debug::SifliUartCommand;
         use crate::ram_stub::load_stub_file;
-        use probe_rs::MemoryMappedRegister;
-        use probe_rs::architecture::arm::core::armv7m::{Aircr, Demcr};
-        use probe_rs::architecture::arm::core::registers::cortex_m::{PC, SP};
 
         let progress = self.progress();
         let spinner = progress.create_spinner(ProgressOperation::DownloadStub {
@@ -349,16 +347,16 @@ impl SF32LB56Tool {
 
         // 1. reset and halt
         //    1.1. reset_catch_set
-        let demcr = self.debug_read_word32(Demcr::get_mmio_address() as u32)?;
+        let demcr = self.debug_read_word32(DEMCR_ADDR)?;
         let mut demcr = Demcr(demcr);
         demcr.set_vc_corereset(true);
-        self.debug_write_word32(Demcr::get_mmio_address() as u32, demcr.into())?;
+        self.debug_write_word32(DEMCR_ADDR, demcr.into())?;
 
         // 1.2. reset_system
         let mut aircr = Aircr(0);
         aircr.vectkey();
         aircr.set_sysresetreq(true);
-        let _ = self.debug_write_word32(Aircr::get_mmio_address() as u32, aircr.into()); // MCU已经重启，不一定能收到正确回复
+        let _ = self.debug_write_word32(AIRCR_ADDR, aircr.into()); // MCU已经重启，不一定能收到正确回复
         std::thread::sleep(std::time::Duration::from_millis(10));
 
         // 1.3. Re-enter debug mode
@@ -368,10 +366,10 @@ impl SF32LB56Tool {
         self.debug_halt()?;
 
         // 1.5. reset_catch_clear
-        let demcr = self.debug_read_word32(Demcr::get_mmio_address() as u32)?;
+        let demcr = self.debug_read_word32(DEMCR_ADDR)?;
         let mut demcr = Demcr(demcr);
         demcr.set_vc_corereset(false);
-        self.debug_write_word32(Demcr::get_mmio_address() as u32, demcr.into())?;
+        self.debug_write_word32(DEMCR_ADDR, demcr.into())?;
 
         std::thread::sleep(std::time::Duration::from_millis(100));
         // 2. Download stub - 支持外部 stub 文件
@@ -407,8 +405,8 @@ impl SF32LB56Tool {
                 .try_into()
                 .expect("slice with exactly 4 bytes"),
         );
-        self.debug_write_core_reg(PC.id.0, pc)?;
-        self.debug_write_core_reg(SP.id.0, sp)?;
+        self.debug_write_core_reg(REG_PC, pc)?;
+        self.debug_write_core_reg(REG_SP, sp)?;
 
         // 3.2. run
         self.debug_run()?;
