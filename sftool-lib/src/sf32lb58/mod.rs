@@ -274,7 +274,7 @@ impl SifliTool for SF32LB58Tool {
             .open()
             .unwrap();
         port.write_request_to_send(false).unwrap();
-        sleep_with_cancel(&base.cancel_token, Duration::from_millis(100)).unwrap();
+        std::thread::sleep(Duration::from_millis(100));
 
         let mut tool = Box::new(Self { base, port });
         if tool.base.before.should_download_stub() {

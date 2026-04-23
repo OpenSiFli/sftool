@@ -172,6 +172,7 @@ impl<'a> SerialIo<'a> {
                     if last_activity.elapsed() > timeout {
                         return Err(Error::timeout(format!("waiting for {}", context)));
                     }
+                    self.sleep(IDLE_BACKOFF)?;
                 }
                 Ok(n) => {
                     offset += n;
@@ -183,6 +184,7 @@ impl<'a> SerialIo<'a> {
                     if last_activity.elapsed() > timeout {
                         return Err(Error::timeout(format!("waiting for {}", context)));
                     }
+                    self.sleep(IDLE_BACKOFF)?;
                 }
                 Err(error) if error.kind() == ErrorKind::Interrupted => continue,
                 Err(error) => return Err(error.into()),
