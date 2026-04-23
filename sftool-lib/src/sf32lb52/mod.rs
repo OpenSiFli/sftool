@@ -8,8 +8,8 @@ pub mod sifli_debug;
 pub mod speed;
 pub mod write_flash;
 
-use crate::common::sifli_debug::SifliDebug;
 use crate::common::serial_io::{for_tool, sleep_with_cancel};
+use crate::common::sifli_debug::SifliDebug;
 use crate::progress::{
     EraseFlashStyle, EraseRegionStyle, ProgressOperation, ProgressStatus, StubStage,
 };
@@ -160,7 +160,10 @@ impl SF32LB52Tool {
         aircr.vectkey();
         aircr.set_sysresetreq(true);
         let _ = self.debug_write_word32(Aircr::get_mmio_address() as u32, aircr.into()); // MCU已经重启，不一定能收到正确回复
-        sleep_with_cancel(&self.base.cancel_token, std::time::Duration::from_millis(10))?;
+        sleep_with_cancel(
+            &self.base.cancel_token,
+            std::time::Duration::from_millis(10),
+        )?;
 
         // 1.3. Re-enter debug mode
         self.debug_command(SifliUartCommand::Enter)?;
@@ -174,7 +177,10 @@ impl SF32LB52Tool {
         demcr.set_vc_corereset(false);
         self.debug_write_word32(Demcr::get_mmio_address() as u32, demcr.into())?;
 
-        sleep_with_cancel(&self.base.cancel_token, std::time::Duration::from_millis(100))?;
+        sleep_with_cancel(
+            &self.base.cancel_token,
+            std::time::Duration::from_millis(100),
+        )?;
         // 2. Download stub - 支持外部 stub 文件
         let chip_memory_key = format!("sf32lb52_{}", self.base.memory_type);
         let stub = match load_stub_file(self.base.external_stub_path.as_deref(), &chip_memory_key) {

@@ -150,8 +150,9 @@ pub trait ChipFrameFormat {
     fn create_header(len: u16) -> Vec<u8>;
 
     /// Parse received frame header and return payload size
-    fn parse_frame_header<R: Read>(reader: &mut BufReader<R>)
-    -> std::result::Result<usize, RecvError>;
+    fn parse_frame_header<R: Read>(
+        reader: &mut BufReader<R>,
+    ) -> std::result::Result<usize, RecvError>;
 
     /// Encode command data with chip-specific endianness
     fn encode_command_data(command: &SifliUartCommand) -> Vec<u8>;
@@ -621,7 +622,11 @@ mod tests {
         }
     }
 
-    fn make_test_tool() -> (TestTool, Arc<Mutex<crate::common::serial_io::test_support::TestSerialPortState>>, CancelToken) {
+    fn make_test_tool() -> (
+        TestTool,
+        Arc<Mutex<crate::common::serial_io::test_support::TestSerialPortState>>,
+        CancelToken,
+    ) {
         let token = CancelToken::new();
         let (port, state) = TestSerialPort::from_bytes(&[]);
         let base = SifliToolBase::new_with_external_stub_and_cancel(

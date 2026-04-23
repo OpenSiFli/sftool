@@ -7,9 +7,9 @@ pub mod reset;
 pub mod speed;
 pub mod write_flash;
 
+use crate::common::serial_io::{for_tool, sleep_with_cancel};
 use crate::progress::{ProgressOperation, ProgressStatus, StubStage};
 use crate::sf32lb58::ram_command::DownloadStub;
-use crate::common::serial_io::{for_tool, sleep_with_cancel};
 use crate::{Result, SifliTool, SifliToolBase, SifliToolTrait};
 use serialport::SerialPort;
 use std::time::Duration;
@@ -263,11 +263,7 @@ impl SF32LB58Tool {
         }
 
         tracing::error!("Received Fail response: '{}'", response_str);
-        Err(std::io::Error::other(format!(
-            "Received Fail response: {}",
-            response_str
-        ))
-        .into())
+        Err(std::io::Error::other(format!("Received Fail response: {}", response_str)).into())
     }
 }
 

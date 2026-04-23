@@ -12,12 +12,7 @@ impl RamCommand for SF32LB52Tool {
         let cmd_string = self.format_command(&cmd);
         let memory_type = self.base.memory_type.clone();
         let mut io = for_tool(self);
-        RamOps::send_command_and_wait_response(
-            &mut io,
-            cmd,
-            &cmd_string,
-            memory_type.as_str(),
-        )
+        RamOps::send_command_and_wait_response(&mut io, cmd, &cmd_string, memory_type.as_str())
     }
 
     fn send_data(&mut self, data: &[u8]) -> Result<Response> {
@@ -45,7 +40,10 @@ impl DownloadStub for SF32LB52Tool {
         self.attempt_connect()?;
         self.download_stub_impl()?;
 
-        sleep_with_cancel(&self.base.cancel_token, std::time::Duration::from_millis(100))?;
+        sleep_with_cancel(
+            &self.base.cancel_token,
+            std::time::Duration::from_millis(100),
+        )?;
         {
             let mut io = for_tool(self);
             io.clear(serialport::ClearBuffer::All)?;
@@ -66,9 +64,7 @@ impl DownloadStub for SF32LB52Tool {
         } else {
             // 非SD模式：等待shell提示符 "msh >"
             RamOps::wait_for_shell_prompt(
-                &mut io,
-                b"msh >",
-                200, // 200ms间隔
+                &mut io, b"msh >", 200, // 200ms间隔
                 5,   // 最多重试5次
             )
         }

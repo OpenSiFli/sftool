@@ -87,13 +87,8 @@ impl FlashReader {
 
             Self::wait_for_marker(&mut io, Self::START_TRANS_MARKER, "start_trans marker")?;
 
-            let actual_crc = Self::receive_payload(
-                &mut io,
-                size,
-                &mut temp_file,
-                &progress_bar,
-                address,
-            )?;
+            let actual_crc =
+                Self::receive_payload(&mut io, size, &mut temp_file, &progress_bar, address)?;
 
             let expected_crc = Self::read_crc_value(&mut io)?;
             Self::expect_ok(&mut io)?;
@@ -197,9 +192,6 @@ impl FlashReader {
     }
 
     fn read_line(io: &mut SerialIo<'_>, context: &str) -> Result<String> {
-        io.read_line_with_timeout(
-            Duration::from_millis(Self::READ_TIMEOUT_MS as u64),
-            context,
-        )
+        io.read_line_with_timeout(Duration::from_millis(Self::READ_TIMEOUT_MS as u64), context)
     }
 }

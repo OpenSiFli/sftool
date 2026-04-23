@@ -11,12 +11,7 @@ impl RamCommand for SF32LB55Tool {
         let cmd_string = self.format_command(&cmd);
         let memory_type = self.base.memory_type.clone();
         let mut io = for_tool(self);
-        RamOps::send_command_and_wait_response(
-            &mut io,
-            cmd,
-            &cmd_string,
-            memory_type.as_str(),
-        )
+        RamOps::send_command_and_wait_response(&mut io, cmd, &cmd_string, memory_type.as_str())
     }
 
     fn send_data(&mut self, data: &[u8]) -> Result<Response> {

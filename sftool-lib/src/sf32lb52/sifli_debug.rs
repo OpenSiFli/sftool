@@ -1,9 +1,9 @@
 use super::SF32LB52Tool;
 use crate::Result;
+use crate::common::serial_io::is_cancelled_io_error;
 use crate::common::sifli_debug::{
     ChipFrameFormat, RecvError, START_WORD, SifliUartCommand, SifliUartResponse, common_debug,
 };
-use crate::common::serial_io::is_cancelled_io_error;
 use std::io::{BufReader, Read};
 
 // Re-export for the module
@@ -23,7 +23,9 @@ impl ChipFrameFormat for SF32LB52FrameFormat {
         header
     }
 
-    fn parse_frame_header<R: Read>(reader: &mut BufReader<R>) -> std::result::Result<usize, RecvError> {
+    fn parse_frame_header<R: Read>(
+        reader: &mut BufReader<R>,
+    ) -> std::result::Result<usize, RecvError> {
         // 读取长度 (2字节) - SF32LB52 uses little-endian
         let mut length_bytes = [0; 2];
         if let Err(e) = reader.read_exact(&mut length_bytes) {

@@ -253,7 +253,11 @@ impl<'a> SerialIo<'a> {
         context: &str,
     ) -> Result<PatternMatch> {
         let start = Instant::now();
-        let max_len = patterns.iter().map(|pattern| pattern.len()).max().unwrap_or(0);
+        let max_len = patterns
+            .iter()
+            .map(|pattern| pattern.len())
+            .max()
+            .unwrap_or(0);
         let mut buffer = Vec::new();
         let mut window = VecDeque::with_capacity(max_len.max(1));
 

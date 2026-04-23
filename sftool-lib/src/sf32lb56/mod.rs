@@ -8,12 +8,12 @@ pub mod sifli_debug;
 pub mod speed;
 pub mod write_flash;
 
+use crate::common::serial_io::is_cancelled_io_error;
+use crate::common::serial_io::{for_tool, sleep_with_cancel};
 use crate::common::sifli_debug::{
     ChipFrameFormat, RecvError, START_WORD, SifliDebug, SifliUartCommand, SifliUartResponse,
     common_debug,
 };
-use crate::common::serial_io::is_cancelled_io_error;
-use crate::common::serial_io::{for_tool, sleep_with_cancel};
 use crate::progress::{
     EraseFlashStyle, EraseRegionStyle, ProgressOperation, ProgressStatus, StubStage,
 };
@@ -43,7 +43,9 @@ impl ChipFrameFormat for SF32LB56FrameFormat {
         header
     }
 
-    fn parse_frame_header<R: Read>(reader: &mut BufReader<R>) -> std::result::Result<usize, RecvError> {
+    fn parse_frame_header<R: Read>(
+        reader: &mut BufReader<R>,
+    ) -> std::result::Result<usize, RecvError> {
         // 读取长度 (2字节) - SF32LB56 uses big-endian
         let mut length_bytes = [0; 2];
         if let Err(e) = reader.read_exact(&mut length_bytes) {
@@ -332,7 +334,10 @@ impl SF32LB56Tool {
         aircr.vectkey();
         aircr.set_sysresetreq(true);
         let _ = self.debug_write_word32(Aircr::get_mmio_address() as u32, aircr.into()); // MCU已经重启，不一定能收到正确回复
-        sleep_with_cancel(&self.base.cancel_token, std::time::Duration::from_millis(10))?;
+        sleep_with_cancel(
+            &self.base.cancel_token,
+            std::time::Duration::from_millis(10),
+        )?;
 
         // 1.3. Re-enter debug mode
         self.debug_command(SifliUartCommand::Enter)?;
@@ -346,7 +351,10 @@ impl SF32LB56Tool {
         demcr.set_vc_corereset(false);
         self.debug_write_word32(Demcr::get_mmio_address() as u32, demcr.into())?;
 
-        sleep_with_cancel(&self.base.cancel_token, std::time::Duration::from_millis(100))?;
+        sleep_with_cancel(
+            &self.base.cancel_token,
+            std::time::Duration::from_millis(100),
+        )?;
         // 2. Download stub - 支持外部 stub 文件
         let chip_memory_key = format!("sf32lb56_{}", self.base.memory_type);
         let stub = match load_stub_file(self.base.external_stub_path.as_deref(), &chip_memory_key) {
