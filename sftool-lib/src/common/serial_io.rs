@@ -420,10 +420,10 @@ pub(crate) mod test_support {
             let mut state = self.state.lock().unwrap();
             state.write_calls = state.write_calls.saturating_add(1);
             state.writes.extend_from_slice(buf);
-            if let Some((target_call, token)) = &state.cancel_on_write_call {
-                if state.write_calls >= *target_call {
-                    token.cancel();
-                }
+            if let Some((target_call, token)) = &state.cancel_on_write_call
+                && state.write_calls >= *target_call
+            {
+                token.cancel();
             }
             Ok(buf.len())
         }
