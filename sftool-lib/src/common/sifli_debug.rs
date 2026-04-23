@@ -1,3 +1,6 @@
+use crate::common::serial_io::{
+    CancelableReader, CancelableWriter, for_tool, is_cancelled_io_error, sleep_with_cancel,
+};
 use crate::{Error, Result, SifliTool};
 use probe_rs::architecture::arm::armv8m::Dcrdr;
 use probe_rs::{MemoryMappedRegister, memory_mapped_bitfield_register};
@@ -27,6 +30,7 @@ pub enum SifliUartResponse {
 
 #[derive(Debug)]
 pub enum RecvError {
+    Cancelled,
     Timeout,
     InvalidHeaderLength,
     InvalidHeaderChannel,
@@ -37,6 +41,7 @@ pub enum RecvError {
 impl From<RecvError> for Error {
     fn from(err: RecvError) -> Self {
         match err {
+            RecvError::Cancelled => Error::Cancelled,
             RecvError::Timeout => Error::timeout("receiving UART frame"),
             RecvError::InvalidHeaderLength => Error::protocol("invalid frame length"),
             RecvError::InvalidHeaderChannel => Error::protocol("invalid frame channel information"),
@@ -145,8 +150,8 @@ pub trait ChipFrameFormat {
     fn create_header(len: u16) -> Vec<u8>;
 
     /// Parse received frame header and return payload size
-    fn parse_frame_header(
-        reader: &mut BufReader<Box<dyn Read + Send>>,
+    fn parse_frame_header<R: Read>(
+        reader: &mut BufReader<R>,
     ) -> std::result::Result<usize, RecvError>;
 
     /// Encode command data with chip-specific endianness
@@ -162,21 +167,39 @@ pub trait ChipFrameFormat {
 }
 
 // Common implementation for communication
-pub fn send_command<F: ChipFrameFormat>(
-    writer: &mut BufWriter<Box<dyn Write + Send>>,
+pub fn send_command<F: ChipFrameFormat, W: Write>(
+    writer: &mut BufWriter<W>,
     command: &SifliUartCommand,
 ) -> Result<()> {
     let send_data = F::encode_command_data(command);
     let header = F::create_header(send_data.len() as u16);
 
-    writer.write_all(&header)?;
-    writer.write_all(&send_data)?;
-    writer.flush()?;
+    writer.write_all(&header).map_err(|error| {
+        if is_cancelled_io_error(&error) {
+            Error::Cancelled
+        } else {
+            error.into()
+        }
+    })?;
+    writer.write_all(&send_data).map_err(|error| {
+        if is_cancelled_io_error(&error) {
+            Error::Cancelled
+        } else {
+            error.into()
+        }
+    })?;
+    writer.flush().map_err(|error| {
+        if is_cancelled_io_error(&error) {
+            Error::Cancelled
+        } else {
+            error.into()
+        }
+    })?;
     Ok(())
 }
 
-pub fn recv_response<F: ChipFrameFormat>(
-    reader: &mut BufReader<Box<dyn Read + Send>>,
+pub fn recv_response<F: ChipFrameFormat, R: Read>(
+    reader: &mut BufReader<R>,
 ) -> Result<SifliUartResponse> {
     let start_time = Instant::now();
     let mut temp: Vec<u8> = vec![];
@@ -220,6 +243,9 @@ pub fn recv_response<F: ChipFrameFormat>(
                 // 对于非阻塞IO，继续尝试
                 continue;
             }
+            Err(e) if is_cancelled_io_error(&e) => {
+                return Err(RecvError::Cancelled.into());
+            }
             Err(e) => {
                 tracing::error!("Error reading frame start marker: {}", e);
                 continue; // 继续尝试读取下一个字节
@@ -242,6 +268,9 @@ pub fn recv_response<F: ChipFrameFormat>(
         match reader.read_exact(&mut byte) {
             Ok(_) => {
                 recv_data.push(byte[0]);
+            }
+            Err(e) if is_cancelled_io_error(&e) => {
+                return Err(RecvError::Cancelled.into());
             }
             Err(e) => {
                 tracing::error!("Failed to read payload data: {}", e);
@@ -302,13 +331,19 @@ pub mod common_debug {
         command: SifliUartCommand,
     ) -> Result<SifliUartResponse> {
         tracing::info!("Command: {}", command);
-        let writer: Box<dyn Write + Send> = tool.port().try_clone()?;
+        let writer: CancelableWriter = {
+            let mut io = for_tool(tool);
+            io.try_clone_writer()?
+        };
         let mut buf_writer = BufWriter::new(writer);
 
-        let reader: Box<dyn Read + Send> = tool.port().try_clone()?;
+        let reader: CancelableReader = {
+            let mut io = for_tool(tool);
+            io.try_clone_reader()?
+        };
         let mut buf_reader = BufReader::new(reader);
 
-        let ret = send_command::<F>(&mut buf_writer, &command);
+        let ret = send_command::<F, _>(&mut buf_writer, &command);
         if let Err(e) = ret {
             tracing::error!("Command send error: {:?}", e);
             return Err(e);
@@ -316,7 +351,7 @@ pub mod common_debug {
 
         match command {
             SifliUartCommand::Exit => Ok(SifliUartResponse::Exit),
-            _ => recv_response::<F>(&mut buf_reader),
+            _ => recv_response::<F, _>(&mut buf_reader),
         }
     }
 
@@ -467,7 +502,7 @@ pub mod common_debug {
         debug_write_word32_impl::<T, F>(tool, Dcrsr::get_mmio_address() as u32, dcrsr_val.into())?;
 
         // self.wait_for_core_register_transfer(Duration::from_millis(100))?;
-        std::thread::sleep(Duration::from_millis(10));
+        sleep_with_cancel(&tool.base().cancel_token, Duration::from_millis(10))?;
         Ok(())
     }
 
@@ -485,14 +520,14 @@ pub mod common_debug {
 
         debug_write_word32_impl::<T, F>(tool, Dhcsr::get_mmio_address() as u32, value.into())?;
 
-        std::thread::sleep(Duration::from_millis(10));
+        sleep_with_cancel(&tool.base().cancel_token, Duration::from_millis(10))?;
         Ok(())
     }
 
     /// Common implementation for debug_run
     pub fn debug_run_impl<T: SifliTool, F: ChipFrameFormat>(tool: &mut T) -> Result<()> {
         debug_step_impl::<T, F>(tool)?;
-        std::thread::sleep(Duration::from_millis(100));
+        sleep_with_cancel(&tool.base().cancel_token, Duration::from_millis(100))?;
         let mut value = Dhcsr(0);
         value.set_c_halt(false);
         value.set_c_debugen(true);
@@ -500,7 +535,7 @@ pub mod common_debug {
 
         debug_write_word32_impl::<T, F>(tool, Dhcsr::get_mmio_address() as u32, value.into())?;
 
-        std::thread::sleep(Duration::from_millis(100));
+        sleep_with_cancel(&tool.base().cancel_token, Duration::from_millis(100))?;
         Ok(())
     }
 
@@ -512,7 +547,119 @@ pub mod common_debug {
         value.enable_write();
 
         debug_write_word32_impl::<T, F>(tool, Dhcsr::get_mmio_address() as u32, value.into())?;
-        std::thread::sleep(Duration::from_millis(10));
+        sleep_with_cancel(&tool.base().cancel_token, Duration::from_millis(10))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SifliUartCommand, common_debug};
+    use crate::common::serial_io::test_support::TestSerialPort;
+    use crate::progress::no_op_progress_sink;
+    use crate::{
+        BeforeOperation, CancelToken, EraseFlashParams, EraseFlashTrait, EraseRegionParams,
+        ReadFlashParams, ReadFlashTrait, Result, SifliTool, SifliToolBase, SifliToolTrait,
+        WriteFlashParams, WriteFlashTrait,
+    };
+    use serialport::SerialPort;
+    use std::sync::{Arc, Mutex};
+
+    struct TestTool {
+        base: SifliToolBase,
+        port: Box<dyn SerialPort>,
+    }
+
+    unsafe impl Send for TestTool {}
+    unsafe impl Sync for TestTool {}
+
+    impl SifliToolTrait for TestTool {
+        fn port(&mut self) -> &mut Box<dyn SerialPort> {
+            &mut self.port
+        }
+
+        fn base(&self) -> &SifliToolBase {
+            &self.base
+        }
+
+        fn set_speed(&mut self, _baud: u32) -> Result<()> {
+            Ok(())
+        }
+
+        fn soft_reset(&mut self) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    impl WriteFlashTrait for TestTool {
+        fn write_flash(&mut self, _params: &WriteFlashParams) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    impl ReadFlashTrait for TestTool {
+        fn read_flash(&mut self, _params: &ReadFlashParams) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    impl EraseFlashTrait for TestTool {
+        fn erase_flash(&mut self, _params: &EraseFlashParams) -> Result<()> {
+            Ok(())
+        }
+
+        fn erase_region(&mut self, _params: &EraseRegionParams) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    impl SifliTool for TestTool {
+        fn create_tool(_base_param: SifliToolBase) -> Box<dyn SifliTool>
+        where
+            Self: Sized,
+        {
+            panic!("not used in tests")
+        }
+    }
+
+    fn make_test_tool() -> (
+        TestTool,
+        Arc<Mutex<crate::common::serial_io::test_support::TestSerialPortState>>,
+        CancelToken,
+    ) {
+        let token = CancelToken::new();
+        let (port, state) = TestSerialPort::from_bytes(&[]);
+        let base = SifliToolBase::new_with_external_stub_and_cancel(
+            "test-port".to_string(),
+            BeforeOperation::NoReset,
+            "nor".to_string(),
+            1_000_000,
+            1,
+            false,
+            no_op_progress_sink(),
+            None,
+            token.clone(),
+        );
+        (
+            TestTool {
+                base,
+                port: Box::new(port),
+            },
+            state,
+            token,
+        )
+    }
+
+    #[test]
+    fn debug_command_impl_propagates_cancellation_from_cloned_streams() {
+        let (mut tool, state, token) = make_test_tool();
+        state.lock().unwrap().cancel_on_write_call = Some((1, token));
+
+        let result = common_debug::debug_command_impl::<
+            TestTool,
+            crate::sf32lb52::sifli_debug::SF32LB52FrameFormat,
+        >(&mut tool, SifliUartCommand::Enter);
+
+        assert!(matches!(result, Err(crate::Error::Cancelled)));
     }
 }

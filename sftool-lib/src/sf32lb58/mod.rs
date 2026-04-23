@@ -7,11 +7,11 @@ pub mod reset;
 pub mod speed;
 pub mod write_flash;
 
+use crate::common::serial_io::{for_tool, sleep_with_cancel};
 use crate::progress::{ProgressOperation, ProgressStatus, StubStage};
 use crate::sf32lb58::ram_command::DownloadStub;
 use crate::{Result, SifliTool, SifliToolBase, SifliToolTrait};
 use serialport::SerialPort;
-use std::io::Write;
 use std::time::Duration;
 
 pub struct SF32LB58Tool {
@@ -51,11 +51,14 @@ impl SF32LB58Tool {
         let cmd = format!("dfu_recv {}\r", data_len);
         tracing::trace!("Sending DFU command: {}", cmd.trim());
 
-        self.port.write_all(cmd.as_bytes())?;
-        self.port.flush()?;
+        {
+            let mut io = for_tool(self);
+            io.write_all(cmd.as_bytes())?;
+            io.flush()?;
+        }
 
         if let Some(delay) = delay_ms {
-            std::thread::sleep(Duration::from_millis(delay));
+            sleep_with_cancel(&self.base.cancel_token, Duration::from_millis(delay))?;
         }
 
         Ok(())
@@ -69,12 +72,15 @@ impl SF32LB58Tool {
             data.len()
         );
 
-        self.port.write_all(header)?;
-        self.port.write_all(data)?;
-        self.port.flush()?;
+        {
+            let mut io = for_tool(self);
+            io.write_all(header)?;
+            io.write_all(data)?;
+            io.flush()?;
+        }
 
         if let Some(delay) = delay_ms {
-            std::thread::sleep(Duration::from_millis(delay));
+            sleep_with_cancel(&self.base.cancel_token, Duration::from_millis(delay))?;
         }
 
         Ok(())
@@ -84,7 +90,10 @@ impl SF32LB58Tool {
         use crate::ram_stub::{self, SIG_PUB_FILE, load_stub_file};
 
         tracing::info!("Starting SF32LB58 stub download process");
-        self.port.clear(serialport::ClearBuffer::All)?;
+        {
+            let mut io = for_tool(self);
+            io.clear(serialport::ClearBuffer::All)?;
+        }
 
         let progress = self.progress();
         let spinner = progress.create_spinner(ProgressOperation::DownloadStub {
@@ -193,6 +202,7 @@ impl SF32LB58Tool {
         let mut chunk_count = 0;
 
         while offset < data.len() {
+            self.base.check_cancelled()?;
             let remaining = data.len() - offset;
             let chunk_size = std::cmp::min(remaining, Self::CHUNK_OVERHEAD + Self::BLOCK_SIZE);
 
@@ -236,82 +246,24 @@ impl SF32LB58Tool {
 
     /// 等待OK响应
     fn wait_for_ok_response(&mut self, timeout_ms: u64) -> Result<()> {
-        use std::io::Read;
-
-        let mut buffer = Vec::new();
-        let start_time = std::time::SystemTime::now();
-        let mut last_log_time = start_time;
-
         tracing::trace!("Waiting for OK response with timeout: {}ms", timeout_ms);
+        let matched = {
+            let mut io = for_tool(self);
+            io.wait_for_patterns(
+                &[b"OK", b"Fail"],
+                Duration::from_millis(timeout_ms),
+                "OK response",
+            )?
+        };
 
-        loop {
-            let elapsed = start_time.elapsed().unwrap().as_millis() as u64;
-            if elapsed > timeout_ms {
-                let response_str = String::from_utf8_lossy(&buffer);
-                tracing::error!(
-                    "Timeout waiting for OK response after {}ms. Received: '{}'",
-                    elapsed,
-                    response_str
-                );
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    format!("Timeout waiting for OK response: {}", response_str),
-                )
-                .into());
-            }
-
-            // 每秒记录一次等待状态
-            if elapsed > 0
-                && elapsed.is_multiple_of(1000)
-                && start_time.elapsed().unwrap()
-                    > last_log_time.elapsed().unwrap() + Duration::from_secs(1)
-            {
-                tracing::trace!("Still waiting for response... elapsed: {}ms", elapsed);
-                last_log_time = std::time::SystemTime::now();
-            }
-
-            let mut byte = [0];
-            if self.port.read_exact(&mut byte).is_ok() {
-                buffer.push(byte[0]);
-
-                // 检查是否收到"OK"响应
-                if buffer.windows(2).any(|window| window == b"OK") {
-                    let response_str = String::from_utf8_lossy(&buffer);
-                    tracing::trace!(
-                        "Received OK response after {}ms: '{}'",
-                        elapsed,
-                        response_str
-                    );
-                    return Ok(());
-                }
-
-                // 检查是否收到"Fail"响应
-                if buffer.windows(4).any(|window| window == b"Fail") {
-                    let response_str = String::from_utf8_lossy(&buffer);
-                    tracing::error!(
-                        "Received Fail response after {}ms: '{}'",
-                        elapsed,
-                        response_str
-                    );
-                    return Err(std::io::Error::other(format!(
-                        "Received Fail response: {}",
-                        response_str
-                    ))
-                    .into());
-                }
-
-                // 限制缓冲区大小，避免内存占用过多
-                if buffer.len() > 1024 {
-                    let response_str = String::from_utf8_lossy(&buffer);
-                    tracing::warn!(
-                        "Response buffer too large ({}), truncating. Content: '{}'",
-                        buffer.len(),
-                        response_str
-                    );
-                    buffer.drain(..512); // 保留后半部分
-                }
-            }
+        let response_str = String::from_utf8_lossy(&matched.buffer);
+        if matched.index == 0 {
+            tracing::trace!("Received OK response: '{}'", response_str);
+            return Ok(());
         }
+
+        tracing::error!("Received Fail response: '{}'", response_str);
+        Err(std::io::Error::other(format!("Received Fail response: {}", response_str)).into())
     }
 }
 

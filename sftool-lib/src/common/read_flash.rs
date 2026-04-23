@@ -1,13 +1,12 @@
 use crate::common::ram_command::{Command, RamCommand};
+use crate::common::serial_io::{SerialIo, for_tool};
 use crate::progress::{ProgressHandle, ProgressOperation, ProgressStatus};
 use crate::utils::Utils;
 use crate::{Error, Result, SifliToolTrait};
 use crc::{Algorithm, Crc};
-use serialport::SerialPort;
-use std::collections::VecDeque;
 use std::fs::File;
-use std::io::{ErrorKind, Read, Seek, Write};
-use std::time::Instant;
+use std::io::{Seek, Write};
+use std::time::Duration;
 use tempfile::tempfile;
 
 /// 通用的Flash读取文件结构
@@ -73,6 +72,7 @@ impl FlashReader {
     where
         T: SifliToolTrait + RamCommand,
     {
+        tool.check_cancelled()?;
         let progress = tool.progress();
         let progress_bar =
             progress.create_bar(size as u64, ProgressOperation::ReadFlash { address, size });
@@ -83,15 +83,15 @@ impl FlashReader {
         tool.command(Command::Read { address, len: size })?;
 
         let (expected_crc, actual_crc) = {
-            let port = tool.port();
+            let mut io = for_tool(tool);
 
-            Self::wait_for_marker(port, Self::START_TRANS_MARKER, "start_trans marker")?;
+            Self::wait_for_marker(&mut io, Self::START_TRANS_MARKER, "start_trans marker")?;
 
             let actual_crc =
-                Self::receive_payload(port, size, &mut temp_file, &progress_bar, address)?;
+                Self::receive_payload(&mut io, size, &mut temp_file, &progress_bar, address)?;
 
-            let expected_crc = Self::read_crc_value(port)?;
-            Self::expect_ok(port)?;
+            let expected_crc = Self::read_crc_value(&mut io)?;
+            Self::expect_ok(&mut io)?;
 
             (expected_crc, actual_crc)
         };
@@ -112,47 +112,17 @@ impl FlashReader {
         Ok(())
     }
 
-    fn wait_for_marker(port: &mut Box<dyn SerialPort>, marker: &[u8], context: &str) -> Result<()> {
-        if marker.is_empty() {
-            return Ok(());
-        }
-
-        let mut window = VecDeque::with_capacity(marker.len());
-        let mut last_activity = Instant::now();
-
-        loop {
-            let mut byte = [0u8; 1];
-            match port.read(&mut byte) {
-                Ok(0) => {
-                    if last_activity.elapsed().as_millis() > Self::READ_TIMEOUT_MS {
-                        return Err(Error::timeout(format!("waiting for {}", context)));
-                    }
-                }
-                Ok(_) => {
-                    last_activity = Instant::now();
-                    window.push_back(byte[0]);
-                    if window.len() > marker.len() {
-                        window.pop_front();
-                    }
-                    if window.len() == marker.len()
-                        && window.iter().copied().eq(marker.iter().copied())
-                    {
-                        return Ok(());
-                    }
-                }
-                Err(e) if matches!(e.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) => {
-                    if last_activity.elapsed().as_millis() > Self::READ_TIMEOUT_MS {
-                        return Err(Error::timeout(format!("waiting for {}", context)));
-                    }
-                }
-                Err(e) if e.kind() == ErrorKind::Interrupted => {}
-                Err(e) => return Err(e.into()),
-            }
-        }
+    fn wait_for_marker(io: &mut SerialIo<'_>, marker: &[u8], context: &str) -> Result<()> {
+        io.wait_for_pattern(
+            marker,
+            Duration::from_millis(Self::READ_TIMEOUT_MS as u64),
+            context,
+        )?;
+        Ok(())
     }
 
     fn receive_payload(
-        port: &mut Box<dyn SerialPort>,
+        io: &mut SerialIo<'_>,
         size: u32,
         temp_file: &mut File,
         progress_bar: &ProgressHandle,
@@ -167,13 +137,13 @@ impl FlashReader {
         let mut processed = 0usize;
 
         while remaining > 0 {
+            io.check_cancelled()?;
             let chunk_len = std::cmp::min(buffer.len(), remaining);
             let chunk = &mut buffer[..chunk_len];
             let current_address = address.saturating_add(processed as u32);
-            Self::read_exact_with_timeout(
-                port,
+            io.read_exact_with_timeout(
                 chunk,
-                Self::READ_TIMEOUT_MS,
+                Duration::from_millis(Self::READ_TIMEOUT_MS as u64),
                 &format!("reading flash at 0x{:08X}", current_address),
             )?;
 
@@ -188,8 +158,8 @@ impl FlashReader {
         Ok(digest.finalize())
     }
 
-    fn read_crc_value(port: &mut Box<dyn SerialPort>) -> Result<u32> {
-        let line = Self::read_non_empty_line(port, "CRC response")?;
+    fn read_crc_value(io: &mut SerialIo<'_>) -> Result<u32> {
+        let line = Self::read_non_empty_line(io, "CRC response")?;
         let lower = line.to_ascii_lowercase();
         let prefix = "crc:0x";
 
@@ -202,17 +172,17 @@ impl FlashReader {
             .map_err(|e| Error::protocol(format!("invalid CRC '{}': {}", line, e)))
     }
 
-    fn expect_ok(port: &mut Box<dyn SerialPort>) -> Result<()> {
-        let line = Self::read_non_empty_line(port, "OK response")?;
+    fn expect_ok(io: &mut SerialIo<'_>) -> Result<()> {
+        let line = Self::read_non_empty_line(io, "OK response")?;
         if line != "OK" {
             return Err(Error::protocol(format!("unexpected response: {}", line)));
         }
         Ok(())
     }
 
-    fn read_non_empty_line(port: &mut Box<dyn SerialPort>, context: &str) -> Result<String> {
+    fn read_non_empty_line(io: &mut SerialIo<'_>, context: &str) -> Result<String> {
         loop {
-            let line = Self::read_line(port, context)?;
+            let line = Self::read_line(io, context)?;
             let trimmed = line.trim().to_string();
             if trimmed.is_empty() {
                 continue;
@@ -221,73 +191,7 @@ impl FlashReader {
         }
     }
 
-    fn read_line(port: &mut Box<dyn SerialPort>, context: &str) -> Result<String> {
-        let mut buffer = Vec::new();
-        let mut last_activity = Instant::now();
-
-        loop {
-            let mut byte = [0u8; 1];
-            match port.read(&mut byte) {
-                Ok(0) => {
-                    if last_activity.elapsed().as_millis() > Self::READ_TIMEOUT_MS {
-                        return Err(Error::timeout(format!("waiting for {}", context)));
-                    }
-                }
-                Ok(_) => {
-                    last_activity = Instant::now();
-                    match byte[0] {
-                        b'\n' => break,
-                        b'\r' => continue,
-                        ch => buffer.push(ch),
-                    }
-                }
-                Err(e) if matches!(e.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) => {
-                    if last_activity.elapsed().as_millis() > Self::READ_TIMEOUT_MS {
-                        return Err(Error::timeout(format!("waiting for {}", context)));
-                    }
-                }
-                Err(e) if e.kind() == ErrorKind::Interrupted => continue,
-                Err(e) => return Err(e.into()),
-            }
-        }
-
-        Ok(String::from_utf8_lossy(&buffer).into_owned())
-    }
-
-    fn read_exact_with_timeout(
-        port: &mut Box<dyn SerialPort>,
-        buf: &mut [u8],
-        timeout_ms: u128,
-        context: &str,
-    ) -> Result<()> {
-        if buf.is_empty() {
-            return Ok(());
-        }
-
-        let mut offset = 0;
-        let mut last_activity = Instant::now();
-
-        while offset < buf.len() {
-            match port.read(&mut buf[offset..]) {
-                Ok(0) => {
-                    if last_activity.elapsed().as_millis() > timeout_ms {
-                        return Err(Error::timeout(format!("waiting for {}", context)));
-                    }
-                }
-                Ok(n) => {
-                    offset += n;
-                    last_activity = Instant::now();
-                }
-                Err(e) if matches!(e.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) => {
-                    if last_activity.elapsed().as_millis() > timeout_ms {
-                        return Err(Error::timeout(format!("waiting for {}", context)));
-                    }
-                }
-                Err(e) if e.kind() == ErrorKind::Interrupted => continue,
-                Err(e) => return Err(e.into()),
-            }
-        }
-
-        Ok(())
+    fn read_line(io: &mut SerialIo<'_>, context: &str) -> Result<String> {
+        io.read_line_with_timeout(Duration::from_millis(Self::READ_TIMEOUT_MS as u64), context)
     }
 }

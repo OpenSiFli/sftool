@@ -29,7 +29,37 @@ pub use error::{Error, Result};
 
 use crate::progress::{ProgressHelper, ProgressSinkArc, no_op_progress_sink};
 use serialport::SerialPort;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+
+#[derive(Clone, Default)]
+pub struct CancelToken {
+    cancelled: Arc<AtomicBool>,
+}
+
+impl CancelToken {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::SeqCst)
+    }
+
+    pub fn check_cancelled(&self) -> Result<()> {
+        if self.is_cancelled() {
+            Err(Error::Cancelled)
+        } else {
+            Ok(())
+        }
+    }
+}
 
 /// Load stub image bytes for the given chip and memory type.
 pub fn load_stub_bytes(
@@ -107,6 +137,7 @@ pub struct SifliToolBase {
     pub compat: bool,
     pub progress_sink: ProgressSinkArc,
     pub progress_helper: Arc<ProgressHelper>,
+    pub cancel_token: CancelToken,
     /// 外部 stub 文件路径，如果指定则优先使用外部文件而非内嵌文件
     pub external_stub_path: Option<String>,
 }
@@ -132,6 +163,7 @@ impl SifliToolBase {
             compat,
             progress_sink,
             progress_helper,
+            cancel_token: CancelToken::new(),
             external_stub_path: None,
         }
     }
@@ -156,6 +188,7 @@ impl SifliToolBase {
             compat,
             progress_sink,
             progress_helper,
+            cancel_token: CancelToken::new(),
             external_stub_path: None,
         }
     }
@@ -182,8 +215,40 @@ impl SifliToolBase {
             compat,
             progress_sink,
             progress_helper,
+            cancel_token: CancelToken::new(),
             external_stub_path,
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_external_stub_and_cancel(
+        port_name: String,
+        before: BeforeOperation,
+        memory_type: String,
+        baud: u32,
+        connect_attempts: i8,
+        compat: bool,
+        progress_sink: ProgressSinkArc,
+        external_stub_path: Option<String>,
+        cancel_token: CancelToken,
+    ) -> Self {
+        let progress_helper = Arc::new(ProgressHelper::new(progress_sink.clone(), 0));
+        Self {
+            port_name,
+            before,
+            memory_type,
+            baud,
+            connect_attempts,
+            compat,
+            progress_sink,
+            progress_helper,
+            cancel_token,
+            external_stub_path,
+        }
+    }
+
+    pub fn check_cancelled(&self) -> Result<()> {
+        self.cancel_token.check_cancelled()
     }
 }
 
@@ -238,6 +303,10 @@ pub trait SifliToolTrait: Send + Sync {
     fn progress(&mut self) -> Arc<ProgressHelper> {
         // 使用共享的进度助手，它会自动处理步骤计数
         self.base().progress_helper.clone()
+    }
+
+    fn check_cancelled(&self) -> Result<()> {
+        self.base().check_cancelled()
     }
 
     fn set_speed(&mut self, baud: u32) -> Result<()>;

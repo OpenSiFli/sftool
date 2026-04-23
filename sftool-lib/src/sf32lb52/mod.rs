@@ -8,6 +8,7 @@ pub mod sifli_debug;
 pub mod speed;
 pub mod write_flash;
 
+use crate::common::serial_io::{for_tool, sleep_with_cancel};
 use crate::common::sifli_debug::SifliDebug;
 use crate::progress::{
     EraseFlashStyle, EraseRegionStyle, ProgressOperation, ProgressStatus, StubStage,
@@ -41,32 +42,12 @@ impl SF32LB52Tool {
         // 发送擦除所有命令
         let _ = self.command(Command::EraseAll { address });
 
-        let mut buffer = Vec::new();
-        let now = std::time::SystemTime::now();
-
-        // 等待擦除完成
-        loop {
-            let elapsed = now.elapsed().unwrap().as_millis();
-            if elapsed > 30000 {
-                // 擦除可能需要更长时间
-                tracing::error!("response string is {}", String::from_utf8_lossy(&buffer));
-                return Err(
-                    std::io::Error::new(std::io::ErrorKind::TimedOut, "Erase timeout").into(),
-                );
-            }
-
-            let mut byte = [0];
-            let ret = self.port().read_exact(&mut byte);
-            if ret.is_err() {
-                continue;
-            }
-            buffer.push(byte[0]);
-
-            // 检查擦除完成响应
-            if buffer.windows(2).any(|window| window == b"OK") {
-                break;
-            }
-        }
+        let mut io = for_tool(self);
+        io.wait_for_pattern(
+            b"OK",
+            Duration::from_millis(30_000),
+            &format!("erasing flash at 0x{:08X}", address),
+        )?;
 
         spinner.finish(ProgressStatus::Success);
 
@@ -87,9 +68,6 @@ impl SF32LB52Tool {
         // 发送擦除区域命令
         let _ = self.command(Command::Erase { address, len });
 
-        let mut buffer = Vec::new();
-        let now = std::time::SystemTime::now();
-
         let timeout_ms = (len as u128 / (4 * 1024) + 1) * 800; // 我们假设每擦除1个sector（4KB）最长时间不超过800ms
         tracing::info!(
             "Erase region at 0x{:08X} with length 0x{:08X}, timeout: {} ms",
@@ -98,29 +76,12 @@ impl SF32LB52Tool {
             timeout_ms
         );
 
-        // 等待擦除完成
-        loop {
-            let elapsed = now.elapsed().unwrap().as_millis();
-            if elapsed > timeout_ms {
-                // 擦除可能需要更长时间
-                tracing::error!("response string is {}", String::from_utf8_lossy(&buffer));
-                return Err(
-                    std::io::Error::new(std::io::ErrorKind::TimedOut, "Erase timeout").into(),
-                );
-            }
-
-            let mut byte = [0];
-            let ret = self.port().read_exact(&mut byte);
-            if ret.is_err() {
-                continue;
-            }
-            buffer.push(byte[0]);
-
-            // 检查擦除完成响应
-            if buffer.windows(2).any(|window| window == b"OK") {
-                break;
-            }
-        }
+        let mut io = for_tool(self);
+        io.wait_for_pattern(
+            b"OK",
+            Duration::from_millis(timeout_ms as u64),
+            &format!("erasing region at 0x{:08X}", address),
+        )?;
 
         spinner.finish(ProgressStatus::Success);
 
@@ -139,10 +100,11 @@ impl SF32LB52Tool {
         loop {
             if self.base.before.requires_reset() {
                 // 使用RTS引脚复位
-                self.port.write_request_to_send(true)?;
-                std::thread::sleep(Duration::from_millis(100));
-                self.port.write_request_to_send(false)?;
-                std::thread::sleep(Duration::from_millis(100));
+                let mut io = for_tool(self);
+                io.write_request_to_send(true)?;
+                io.sleep(Duration::from_millis(100))?;
+                io.write_request_to_send(false)?;
+                io.sleep(Duration::from_millis(100))?;
             }
             let value: Result<()> = match self.debug_command(SifliUartCommand::Enter) {
                 Ok(SifliUartResponse::Enter) => Ok(()),
@@ -167,7 +129,7 @@ impl SF32LB52Tool {
                 }
                 Err(_) => {
                     spinner.finish(ProgressStatus::Retry);
-                    std::thread::sleep(Duration::from_millis(500));
+                    sleep_with_cancel(&self.base.cancel_token, Duration::from_millis(500))?;
                 }
             }
         }
@@ -198,7 +160,10 @@ impl SF32LB52Tool {
         aircr.vectkey();
         aircr.set_sysresetreq(true);
         let _ = self.debug_write_word32(Aircr::get_mmio_address() as u32, aircr.into()); // MCU已经重启，不一定能收到正确回复
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        sleep_with_cancel(
+            &self.base.cancel_token,
+            std::time::Duration::from_millis(10),
+        )?;
 
         // 1.3. Re-enter debug mode
         self.debug_command(SifliUartCommand::Enter)?;
@@ -212,7 +177,10 @@ impl SF32LB52Tool {
         demcr.set_vc_corereset(false);
         self.debug_write_word32(Demcr::get_mmio_address() as u32, demcr.into())?;
 
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        sleep_with_cancel(
+            &self.base.cancel_token,
+            std::time::Duration::from_millis(100),
+        )?;
         // 2. Download stub - 支持外部 stub 文件
         let chip_memory_key = format!("sf32lb52_{}", self.base.memory_type);
         let stub = match load_stub_file(self.base.external_stub_path.as_deref(), &chip_memory_key) {

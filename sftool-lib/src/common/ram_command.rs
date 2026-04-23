@@ -1,6 +1,5 @@
+use crate::common::serial_io::SerialIo;
 use crate::{Error, Result};
-use serialport::SerialPort;
-use std::io::{Read, Write};
 use std::str::FromStr;
 use strum::{Display, EnumString};
 
@@ -86,7 +85,7 @@ impl RamOps {
 
     /// 发送命令并等待响应的通用实现
     pub fn send_command_and_wait_response(
-        port: &mut Box<dyn SerialPort>,
+        io: &mut SerialIo<'_>,
         cmd: Command,
         command_str: &str,
         memory_type: &str,
@@ -94,8 +93,8 @@ impl RamOps {
         tracing::debug!("command: {:?}", cmd);
 
         // 发送命令
-        port.write_all(command_str.as_bytes())?;
-        port.flush()?;
+        io.write_all(command_str.as_bytes())?;
+        io.flush()?;
         // 在macOS上，FTDI的驱动似乎不高兴我们清除输入缓冲区，这可能会导致后续要发送的内容被截断
         // 因此这个地方我们不再需要清理缓冲区，应该在后续的操作中滤除掉额外的信息
         // port.clear(serialport::ClearBuffer::All)?;
@@ -119,114 +118,57 @@ impl RamOps {
             _ => (),
         }
 
-        Self::wait_for_response(port, timeout)
+        Self::wait_for_response(io, timeout)
     }
 
     /// 发送数据并等待响应的通用实现
     pub fn send_data_and_wait_response(
-        port: &mut Box<dyn SerialPort>,
+        io: &mut SerialIo<'_>,
         data: &[u8],
         config: &CommandConfig,
     ) -> Result<Response> {
         // 根据配置发送数据
         if !config.compat_mode {
-            port.write_all(data)?;
-            port.flush()?;
+            io.write_all(data)?;
+            io.flush()?;
         } else {
             // 兼容模式：分块发送
             for chunk in data.chunks(config.chunk_size) {
-                port.write_all(chunk)?;
-                port.flush()?;
-                std::thread::sleep(std::time::Duration::from_millis(config.chunk_delay_ms));
+                io.write_all(chunk)?;
+                io.flush()?;
+                io.sleep(std::time::Duration::from_millis(config.chunk_delay_ms))?;
             }
         }
 
-        Self::wait_for_response(port, Self::DEFAULT_TIMEOUT_MS)
+        Self::wait_for_response(io, Self::DEFAULT_TIMEOUT_MS)
     }
 
     /// 等待响应的通用实现
-    fn wait_for_response(port: &mut Box<dyn SerialPort>, timeout_ms: u128) -> Result<Response> {
-        let mut buffer = Vec::new();
-        let now = std::time::SystemTime::now();
-
-        loop {
-            let elapsed = now.elapsed().unwrap().as_millis();
-            if elapsed > timeout_ms {
-                tracing::debug!("Response buffer: {:?}", String::from_utf8_lossy(&buffer));
-                return Err(Error::timeout("waiting for RAM command response"));
-            }
-
-            let mut byte = [0];
-            let ret = port.read_exact(&mut byte);
-            if ret.is_err() {
-                continue;
-            }
-            buffer.push(byte[0]);
-
-            // 检查是否收到预期的响应
-            for response_str in RESPONSE_STR_TABLE.iter() {
-                let response_bytes = response_str.as_bytes();
-                let exists = buffer
-                    .windows(response_bytes.len())
-                    .any(|window| window == response_bytes);
-                if exists {
-                    tracing::debug!("Response buffer: {:?}", String::from_utf8_lossy(&buffer));
-                    return Response::from_str(response_str)
-                        .map_err(|e| Error::invalid_input(e.to_string()));
-                }
-            }
-        }
+    fn wait_for_response(io: &mut SerialIo<'_>, timeout_ms: u128) -> Result<Response> {
+        let matched = io.wait_for_patterns(
+            &RESPONSE_STR_TABLE.map(str::as_bytes),
+            std::time::Duration::from_millis(timeout_ms as u64),
+            "RAM command response",
+        )?;
+        tracing::debug!(
+            "Response buffer: {:?}",
+            String::from_utf8_lossy(&matched.buffer)
+        );
+        Response::from_str(RESPONSE_STR_TABLE[matched.index])
+            .map_err(|e| Error::invalid_input(e.to_string()))
     }
 
     /// 等待shell提示符的通用实现
     pub fn wait_for_shell_prompt(
-        port: &mut Box<dyn SerialPort>,
+        io: &mut SerialIo<'_>,
         prompt: &[u8],
         retry_interval_ms: u64,
         max_retries: u32,
     ) -> Result<()> {
-        let mut buffer = Vec::new();
-        let mut now = std::time::SystemTime::now();
-        let mut retry_count = 0;
-
-        // 发送初始的回车换行
-        port.write_all(b"\r\n")?;
-        port.flush()?;
-
-        loop {
-            let elapsed = now.elapsed().unwrap().as_millis();
-            if elapsed > retry_interval_ms as u128 {
-                tracing::warn!(
-                    "Wait for shell Failed, retry. buffer: {:?}",
-                    String::from_utf8_lossy(&buffer)
-                );
-                port.clear(serialport::ClearBuffer::All)?;
-                tracing::debug!("Retrying to find shell prompt...");
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                retry_count += 1;
-                now = std::time::SystemTime::now();
-                port.write_all(b"\r\n")?;
-                port.flush()?;
-                buffer.clear();
-            }
-
-            if retry_count > max_retries {
-                return Err(Error::timeout("waiting for shell prompt"));
-            }
-
-            let mut byte = [0];
-            let ret = port.read_exact(&mut byte);
-            if ret.is_err() {
-                continue;
-            }
-            buffer.push(byte[0]);
-
-            // 检查是否收到shell提示符
-            if buffer.windows(prompt.len()).any(|window| window == prompt) {
-                break;
-            }
-        }
-
-        Ok(())
+        io.wait_for_prompt(
+            prompt,
+            std::time::Duration::from_millis(retry_interval_ms),
+            max_retries,
+        )
     }
 }
