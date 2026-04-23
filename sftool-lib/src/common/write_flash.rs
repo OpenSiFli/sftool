@@ -1,7 +1,8 @@
 use crate::common::ram_command::{Command, RamCommand, Response};
+use crate::common::serial_io::for_tool;
 use crate::progress::{ProgressOperation, ProgressStatus};
 use crate::{Error, Result, SifliToolTrait, WriteFlashFile};
-use std::io::{BufReader, Read, Write};
+use std::io::{BufReader, Read};
 
 /// 通用的Flash写入操作实现
 pub struct FlashWriter;
@@ -171,15 +172,18 @@ impl FlashWriter {
                 break;
             }
             tool.check_cancelled()?;
-            tool.port().write_all(
-                Command::Write {
-                    address,
-                    len: bytes_read as u32,
-                }
-                .to_string()
-                .as_bytes(),
-            )?;
-            tool.port().flush()?;
+            {
+                let mut io = for_tool(tool);
+                io.write_all(
+                    Command::Write {
+                        address,
+                        len: bytes_read as u32,
+                    }
+                    .to_string()
+                    .as_bytes(),
+                )?;
+                io.flush()?;
+            }
             let res = tool.send_data(&buffer[..bytes_read])?;
             if res != Response::Ok {
                 return Err(Error::protocol(format!(

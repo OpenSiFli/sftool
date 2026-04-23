@@ -1,4 +1,5 @@
 use crate::common::ram_command::{Command, RamCommand};
+use crate::common::serial_io::for_tool;
 use crate::progress::{EraseFlashStyle, EraseRegionStyle, ProgressOperation, ProgressStatus};
 use crate::utils::Utils;
 use crate::{Error, Result, SifliToolTrait};
@@ -22,31 +23,12 @@ impl EraseOps {
         // 发送擦除所有命令
         let _ = tool.command(Command::EraseAll { address });
 
-        let mut buffer = Vec::new();
-        let now = std::time::SystemTime::now();
-
-        // 等待擦除完成
-        loop {
-            tool.check_cancelled()?;
-            let elapsed = now.elapsed().unwrap().as_millis();
-            if elapsed > 30000 {
-                return Err(Error::timeout(format!(
-                    "erasing flash at 0x{:08X}",
-                    address
-                )));
-            }
-
-            let mut byte = [0];
-            let ret = tool.port().read_exact(&mut byte);
-            if ret.is_err() {
-                continue;
-            }
-            buffer.push(byte[0]);
-
-            if buffer.windows(2).any(|window| window == b"OK") {
-                break;
-            }
-        }
+        let mut io = for_tool(tool);
+        io.wait_for_pattern(
+            b"OK",
+            std::time::Duration::from_millis(30_000),
+            &format!("erasing flash at 0x{:08X}", address),
+        )?;
 
         progress_bar.finish(ProgressStatus::Success);
 
@@ -69,32 +51,16 @@ impl EraseOps {
         // 发送擦除区域命令
         let _ = tool.command(Command::Erase { address, len });
 
-        let mut buffer = Vec::new();
-        let now = std::time::SystemTime::now();
-
-        // 等待擦除完成
-        loop {
-            tool.check_cancelled()?;
-            let elapsed = now.elapsed().unwrap().as_millis();
-            if elapsed > 30000 {
-                return Err(Error::timeout(format!(
-                    "erasing region 0x{:08X}..0x{:08X}",
-                    address,
-                    address + len.saturating_sub(1)
-                )));
-            }
-
-            let mut byte = [0];
-            let ret = tool.port().read_exact(&mut byte);
-            if ret.is_err() {
-                continue;
-            }
-            buffer.push(byte[0]);
-
-            if buffer.windows(2).any(|window| window == b"OK") {
-                break;
-            }
-        }
+        let mut io = for_tool(tool);
+        io.wait_for_pattern(
+            b"OK",
+            std::time::Duration::from_millis(30_000),
+            &format!(
+                "erasing region 0x{:08X}..0x{:08X}",
+                address,
+                address + len.saturating_sub(1)
+            ),
+        )?;
 
         progress_bar.finish(ProgressStatus::Success);
 

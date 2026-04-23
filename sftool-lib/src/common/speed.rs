@@ -1,4 +1,5 @@
 use crate::common::ram_command::{Command, RamCommand, RamOps};
+use crate::common::serial_io::{for_tool, sleep_with_cancel};
 use crate::{Result, SifliToolTrait};
 use std::time::Duration;
 
@@ -18,15 +19,12 @@ impl SpeedOps {
         })?;
 
         // 等待一段时间让设置生效
-        std::thread::sleep(Duration::from_millis(50));
+        sleep_with_cancel(&tool.base().cancel_token, Duration::from_millis(50))?;
 
-        // 设置串口波特率
-        tool.port().set_baud_rate(speed)?;
-
-        tool.port().clear(serialport::ClearBuffer::All)?;
-
-        let cancel_token = tool.base().cancel_token.clone();
-        RamOps::wait_for_shell_prompt_with_cancel(tool.port(), b"msh >", 200, 5, &cancel_token)?;
+        let mut io = for_tool(tool);
+        io.set_baud_rate(speed)?;
+        io.clear(serialport::ClearBuffer::All)?;
+        RamOps::wait_for_shell_prompt(&mut io, b"msh >", 200, 5)?;
 
         Ok(())
     }
