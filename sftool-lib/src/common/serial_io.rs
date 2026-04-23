@@ -10,6 +10,8 @@ use serialport::{DataBits, FlowControl, Parity, StopBits};
 use std::sync::{Arc, Mutex};
 
 const SLEEP_CHUNK: Duration = Duration::from_millis(25);
+const IDLE_BACKOFF: Duration = Duration::from_millis(5);
+const MAX_CAPTURE_BUFFER: usize = 1024;
 
 pub struct PatternMatch {
     pub index: usize,
@@ -160,24 +162,25 @@ impl<'a> SerialIo<'a> {
             return Ok(());
         }
 
-        let start = Instant::now();
+        let mut last_activity = Instant::now();
         let mut offset = 0usize;
 
         while offset < buf.len() {
             self.check_cancelled()?;
             match self.port.read(&mut buf[offset..]) {
                 Ok(0) => {
-                    if start.elapsed() > timeout {
+                    if last_activity.elapsed() > timeout {
                         return Err(Error::timeout(format!("waiting for {}", context)));
                     }
                 }
                 Ok(n) => {
                     offset += n;
+                    last_activity = Instant::now();
                 }
                 Err(error)
                     if matches!(error.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) =>
                 {
-                    if start.elapsed() > timeout {
+                    if last_activity.elapsed() > timeout {
                         return Err(Error::timeout(format!("waiting for {}", context)));
                     }
                 }
@@ -191,26 +194,29 @@ impl<'a> SerialIo<'a> {
 
     pub fn read_line_with_timeout(&mut self, timeout: Duration, context: &str) -> Result<String> {
         let mut buffer = Vec::new();
-        let start = Instant::now();
+        let mut last_activity = Instant::now();
 
         loop {
             self.check_cancelled()?;
             let mut byte = [0u8; 1];
             match self.port.read(&mut byte) {
                 Ok(0) => {
-                    if start.elapsed() > timeout {
+                    if last_activity.elapsed() > timeout {
                         return Err(Error::timeout(format!("waiting for {}", context)));
                     }
                 }
-                Ok(_) => match byte[0] {
-                    b'\n' => break,
-                    b'\r' => continue,
-                    ch => buffer.push(ch),
-                },
+                Ok(_) => {
+                    last_activity = Instant::now();
+                    match byte[0] {
+                        b'\n' => break,
+                        b'\r' => continue,
+                        ch => buffer.push(ch),
+                    }
+                }
                 Err(error)
                     if matches!(error.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) =>
                 {
-                    if start.elapsed() > timeout {
+                    if last_activity.elapsed() > timeout {
                         return Err(Error::timeout(format!("waiting for {}", context)));
                     }
                 }
@@ -272,6 +278,10 @@ impl<'a> SerialIo<'a> {
                 Ok(0) => continue,
                 Ok(_) => {
                     buffer.push(byte[0]);
+                    if buffer.len() > MAX_CAPTURE_BUFFER {
+                        let drain_len = buffer.len() - MAX_CAPTURE_BUFFER;
+                        buffer.drain(..drain_len);
+                    }
                     window.push_back(byte[0]);
                     if window.len() > max_len {
                         window.pop_front();
@@ -333,7 +343,7 @@ impl<'a> SerialIo<'a> {
 
             let mut byte = [0u8; 1];
             match self.port.read(&mut byte) {
-                Ok(0) => continue,
+                Ok(0) => self.sleep(IDLE_BACKOFF)?,
                 Ok(_) => {
                     window.push_back(byte[0]);
                     if window.len() > prompt.len() {
@@ -349,7 +359,7 @@ impl<'a> SerialIo<'a> {
                 Err(error)
                     if matches!(error.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) =>
                 {
-                    continue;
+                    self.sleep(IDLE_BACKOFF)?;
                 }
                 Err(error) if error.kind() == ErrorKind::Interrupted => continue,
                 Err(error) => return Err(error.into()),
@@ -585,5 +595,21 @@ mod tests {
         let mut buffer = [0u8; 1];
         let error = reader.read(&mut buffer).unwrap_err();
         assert!(is_cancelled_io_error(&error));
+    }
+
+    #[test]
+    fn wait_for_patterns_bounds_captured_buffer() {
+        let mut bytes = vec![b'a'; MAX_CAPTURE_BUFFER + 32];
+        bytes.extend_from_slice(b"OK");
+        let (mut port, _) = test_support::TestSerialPort::from_bytes(&bytes);
+        let token = CancelToken::new();
+        let mut io = SerialIo::new(&mut port, token);
+
+        let matched = io
+            .wait_for_patterns(&[b"OK"], Duration::from_millis(100), "OK response")
+            .unwrap();
+
+        assert!(matched.buffer.len() <= MAX_CAPTURE_BUFFER);
+        assert!(matched.buffer.ends_with(b"OK"));
     }
 }
