@@ -94,6 +94,7 @@ impl RamOps {
         tracing::debug!("command: {:?}", cmd);
 
         // 发送命令
+        let _ = ();
         port.write_all(command_str.as_bytes())?;
         port.flush()?;
         // 在macOS上，FTDI的驱动似乎不高兴我们清除输入缓冲区，这可能会导致后续要发送的内容被截断
@@ -222,6 +223,89 @@ impl RamOps {
             buffer.push(byte[0]);
 
             // 检查是否收到shell提示符
+            if buffer.windows(prompt.len()).any(|window| window == prompt) {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn wait_for_response_with_cancel(
+        port: &mut Box<dyn SerialPort>,
+        timeout_ms: u128,
+        cancel_token: &crate::CancelToken,
+    ) -> Result<Response> {
+        let mut buffer = Vec::new();
+        let now = std::time::SystemTime::now();
+
+        loop {
+            cancel_token.check_cancelled()?;
+            let elapsed = now.elapsed().unwrap().as_millis();
+            if elapsed > timeout_ms {
+                tracing::debug!("Response buffer: {:?}", String::from_utf8_lossy(&buffer));
+                return Err(Error::timeout("waiting for RAM command response"));
+            }
+
+            let mut byte = [0];
+            let ret = port.read_exact(&mut byte);
+            if ret.is_err() {
+                continue;
+            }
+            buffer.push(byte[0]);
+
+            for response_str in RESPONSE_STR_TABLE.iter() {
+                let response_bytes = response_str.as_bytes();
+                let exists = buffer
+                    .windows(response_bytes.len())
+                    .any(|window| window == response_bytes);
+                if exists {
+                    tracing::debug!("Response buffer: {:?}", String::from_utf8_lossy(&buffer));
+                    return Response::from_str(response_str)
+                        .map_err(|e| Error::invalid_input(e.to_string()));
+                }
+            }
+        }
+    }
+
+    pub fn wait_for_shell_prompt_with_cancel(
+        port: &mut Box<dyn SerialPort>,
+        prompt: &[u8],
+        retry_interval_ms: u64,
+        max_retries: u32,
+        cancel_token: &crate::CancelToken,
+    ) -> Result<()> {
+        let mut buffer = Vec::new();
+        let mut now = std::time::SystemTime::now();
+        let mut retry_count = 0;
+
+        port.write_all(b"\r\n")?;
+        port.flush()?;
+
+        loop {
+            cancel_token.check_cancelled()?;
+            let elapsed = now.elapsed().unwrap().as_millis();
+            if elapsed > retry_interval_ms as u128 {
+                port.clear(serialport::ClearBuffer::All)?;
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                retry_count += 1;
+                now = std::time::SystemTime::now();
+                port.write_all(b"\r\n")?;
+                port.flush()?;
+                buffer.clear();
+            }
+
+            if retry_count > max_retries {
+                return Err(Error::timeout("waiting for shell prompt"));
+            }
+
+            let mut byte = [0];
+            let ret = port.read_exact(&mut byte);
+            if ret.is_err() {
+                continue;
+            }
+            buffer.push(byte[0]);
+
             if buffer.windows(prompt.len()).any(|window| window == prompt) {
                 break;
             }

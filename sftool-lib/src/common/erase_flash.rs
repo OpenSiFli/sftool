@@ -12,6 +12,7 @@ impl EraseOps {
     where
         T: SifliToolTrait + RamCommand,
     {
+        tool.check_cancelled()?;
         let progress = tool.progress();
         let progress_bar = progress.create_spinner(ProgressOperation::EraseFlash {
             address,
@@ -26,6 +27,7 @@ impl EraseOps {
 
         // 等待擦除完成
         loop {
+            tool.check_cancelled()?;
             let elapsed = now.elapsed().unwrap().as_millis();
             if elapsed > 30000 {
                 return Err(Error::timeout(format!(
@@ -56,6 +58,7 @@ impl EraseOps {
     where
         T: SifliToolTrait + RamCommand,
     {
+        tool.check_cancelled()?;
         let progress = tool.progress();
         let progress_bar = progress.create_spinner(ProgressOperation::EraseRegion {
             address,
@@ -71,6 +74,7 @@ impl EraseOps {
 
         // 等待擦除完成
         loop {
+            tool.check_cancelled()?;
             let elapsed = now.elapsed().unwrap().as_millis();
             if elapsed > 30000 {
                 return Err(Error::timeout(format!(

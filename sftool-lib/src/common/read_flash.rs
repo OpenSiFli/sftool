@@ -73,6 +73,7 @@ impl FlashReader {
     where
         T: SifliToolTrait + RamCommand,
     {
+        tool.check_cancelled()?;
         let progress = tool.progress();
         let progress_bar =
             progress.create_bar(size as u64, ProgressOperation::ReadFlash { address, size });
@@ -82,16 +83,28 @@ impl FlashReader {
         // 读取一次即可，由设备负责连续发送数据
         tool.command(Command::Read { address, len: size })?;
 
+        let cancel_token = tool.base().cancel_token.clone();
         let (expected_crc, actual_crc) = {
             let port = tool.port();
 
-            Self::wait_for_marker(port, Self::START_TRANS_MARKER, "start_trans marker")?;
+            Self::wait_for_marker(
+                port,
+                Self::START_TRANS_MARKER,
+                "start_trans marker",
+                &cancel_token,
+            )?;
 
-            let actual_crc =
-                Self::receive_payload(port, size, &mut temp_file, &progress_bar, address)?;
+            let actual_crc = Self::receive_payload(
+                port,
+                size,
+                &mut temp_file,
+                &progress_bar,
+                address,
+                &cancel_token,
+            )?;
 
-            let expected_crc = Self::read_crc_value(port)?;
-            Self::expect_ok(port)?;
+            let expected_crc = Self::read_crc_value(port, &cancel_token)?;
+            Self::expect_ok(port, &cancel_token)?;
 
             (expected_crc, actual_crc)
         };
@@ -112,7 +125,12 @@ impl FlashReader {
         Ok(())
     }
 
-    fn wait_for_marker(port: &mut Box<dyn SerialPort>, marker: &[u8], context: &str) -> Result<()> {
+    fn wait_for_marker(
+        port: &mut Box<dyn SerialPort>,
+        marker: &[u8],
+        context: &str,
+        cancel_token: &crate::CancelToken,
+    ) -> Result<()> {
         if marker.is_empty() {
             return Ok(());
         }
@@ -121,6 +139,7 @@ impl FlashReader {
         let mut last_activity = Instant::now();
 
         loop {
+            cancel_token.check_cancelled()?;
             let mut byte = [0u8; 1];
             match port.read(&mut byte) {
                 Ok(0) => {
@@ -157,6 +176,7 @@ impl FlashReader {
         temp_file: &mut File,
         progress_bar: &ProgressHandle,
         address: u32,
+        cancel_token: &crate::CancelToken,
     ) -> Result<u32> {
         let mut remaining = size as usize;
         let buffer_len = remaining.clamp(1usize, Self::READ_CHUNK_SIZE);
@@ -167,6 +187,7 @@ impl FlashReader {
         let mut processed = 0usize;
 
         while remaining > 0 {
+            cancel_token.check_cancelled()?;
             let chunk_len = std::cmp::min(buffer.len(), remaining);
             let chunk = &mut buffer[..chunk_len];
             let current_address = address.saturating_add(processed as u32);
@@ -175,6 +196,7 @@ impl FlashReader {
                 chunk,
                 Self::READ_TIMEOUT_MS,
                 &format!("reading flash at 0x{:08X}", current_address),
+                cancel_token,
             )?;
 
             temp_file.write_all(chunk)?;
@@ -188,8 +210,11 @@ impl FlashReader {
         Ok(digest.finalize())
     }
 
-    fn read_crc_value(port: &mut Box<dyn SerialPort>) -> Result<u32> {
-        let line = Self::read_non_empty_line(port, "CRC response")?;
+    fn read_crc_value(
+        port: &mut Box<dyn SerialPort>,
+        cancel_token: &crate::CancelToken,
+    ) -> Result<u32> {
+        let line = Self::read_non_empty_line(port, "CRC response", cancel_token)?;
         let lower = line.to_ascii_lowercase();
         let prefix = "crc:0x";
 
@@ -202,17 +227,21 @@ impl FlashReader {
             .map_err(|e| Error::protocol(format!("invalid CRC '{}': {}", line, e)))
     }
 
-    fn expect_ok(port: &mut Box<dyn SerialPort>) -> Result<()> {
-        let line = Self::read_non_empty_line(port, "OK response")?;
+    fn expect_ok(port: &mut Box<dyn SerialPort>, cancel_token: &crate::CancelToken) -> Result<()> {
+        let line = Self::read_non_empty_line(port, "OK response", cancel_token)?;
         if line != "OK" {
             return Err(Error::protocol(format!("unexpected response: {}", line)));
         }
         Ok(())
     }
 
-    fn read_non_empty_line(port: &mut Box<dyn SerialPort>, context: &str) -> Result<String> {
+    fn read_non_empty_line(
+        port: &mut Box<dyn SerialPort>,
+        context: &str,
+        cancel_token: &crate::CancelToken,
+    ) -> Result<String> {
         loop {
-            let line = Self::read_line(port, context)?;
+            let line = Self::read_line(port, context, cancel_token)?;
             let trimmed = line.trim().to_string();
             if trimmed.is_empty() {
                 continue;
@@ -221,11 +250,16 @@ impl FlashReader {
         }
     }
 
-    fn read_line(port: &mut Box<dyn SerialPort>, context: &str) -> Result<String> {
+    fn read_line(
+        port: &mut Box<dyn SerialPort>,
+        context: &str,
+        cancel_token: &crate::CancelToken,
+    ) -> Result<String> {
         let mut buffer = Vec::new();
         let mut last_activity = Instant::now();
 
         loop {
+            cancel_token.check_cancelled()?;
             let mut byte = [0u8; 1];
             match port.read(&mut byte) {
                 Ok(0) => {
@@ -259,6 +293,7 @@ impl FlashReader {
         buf: &mut [u8],
         timeout_ms: u128,
         context: &str,
+        cancel_token: &crate::CancelToken,
     ) -> Result<()> {
         if buf.is_empty() {
             return Ok(());
@@ -268,6 +303,7 @@ impl FlashReader {
         let mut last_activity = Instant::now();
 
         while offset < buf.len() {
+            cancel_token.check_cancelled()?;
             match port.read(&mut buf[offset..]) {
                 Ok(0) => {
                     if last_activity.elapsed().as_millis() > timeout_ms {

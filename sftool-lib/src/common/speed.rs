@@ -25,7 +25,8 @@ impl SpeedOps {
 
         tool.port().clear(serialport::ClearBuffer::All)?;
 
-        RamOps::wait_for_shell_prompt(tool.port(), b"msh >", 200, 5)?;
+        let cancel_token = tool.base().cancel_token.clone();
+        RamOps::wait_for_shell_prompt_with_cancel(tool.port(), b"msh >", 200, 5, &cancel_token)?;
 
         Ok(())
     }

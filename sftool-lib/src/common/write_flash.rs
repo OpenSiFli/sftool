@@ -12,11 +12,13 @@ impl FlashWriter {
     where
         T: SifliToolTrait + RamCommand,
     {
+        tool.check_cancelled()?;
         let progress = tool.progress();
         let spinner = progress.create_spinner(ProgressOperation::EraseAllRegions);
 
         let mut erase_address: Vec<u32> = Vec::new();
         for f in write_flash_files.iter() {
+            tool.check_cancelled()?;
             let address = f.address & 0xFF00_0000;
             // 如果ERASE_ADDRESS中的地址已经被擦除过，则跳过
             if erase_address.contains(&address) {
@@ -35,6 +37,7 @@ impl FlashWriter {
     where
         T: SifliToolTrait + RamCommand,
     {
+        tool.check_cancelled()?;
         let progress = tool.progress();
         let spinner = progress.create_spinner(ProgressOperation::Verify { address, len });
 
@@ -60,6 +63,7 @@ impl FlashWriter {
     where
         T: SifliToolTrait + RamCommand,
     {
+        tool.check_cancelled()?;
         let progress = tool.progress();
         let re_download_spinner = progress.create_spinner(ProgressOperation::CheckRedownload {
             address: file.address,
@@ -102,10 +106,12 @@ impl FlashWriter {
         let mut reader = BufReader::new(&file.file);
 
         loop {
+            tool.check_cancelled()?;
             let bytes_read = reader.read(&mut buffer)?;
             if bytes_read == 0 {
                 break;
             }
+            tool.check_cancelled()?;
             let res = tool.send_data(&buffer[..bytes_read])?;
             if res == Response::RxWait {
                 download_bar.inc(bytes_read as u64);
@@ -122,6 +128,7 @@ impl FlashWriter {
 
         // verify
         if verify {
+            tool.check_cancelled()?;
             Self::verify(
                 tool,
                 file.address,
@@ -143,6 +150,7 @@ impl FlashWriter {
     where
         T: SifliToolTrait + RamCommand,
     {
+        tool.check_cancelled()?;
         let progress = tool.progress();
         let download_bar = progress.create_bar(
             file.file.metadata()?.len(),
@@ -157,10 +165,12 @@ impl FlashWriter {
 
         let mut address = file.address;
         loop {
+            tool.check_cancelled()?;
             let bytes_read = reader.read(&mut buffer)?;
             if bytes_read == 0 {
                 break;
             }
+            tool.check_cancelled()?;
             tool.port().write_all(
                 Command::Write {
                     address,
@@ -185,6 +195,7 @@ impl FlashWriter {
 
         // verify
         if verify {
+            tool.check_cancelled()?;
             Self::verify(
                 tool,
                 file.address,

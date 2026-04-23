@@ -32,6 +32,9 @@ pub enum Error {
     #[error("timeout while {0}")]
     Timeout(String),
 
+    #[error("operation cancelled")]
+    Cancelled,
+
     #[error("configuration error: {0}")]
     Config(String),
 
@@ -59,5 +62,9 @@ impl Error {
 
     pub fn timeout(msg: impl Into<String>) -> Self {
         Self::Timeout(msg.into())
+    }
+
+    pub fn cancelled() -> Self {
+        Self::Cancelled
     }
 }

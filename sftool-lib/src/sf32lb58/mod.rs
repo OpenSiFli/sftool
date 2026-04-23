@@ -193,6 +193,7 @@ impl SF32LB58Tool {
         let mut chunk_count = 0;
 
         while offset < data.len() {
+            self.base.check_cancelled()?;
             let remaining = data.len() - offset;
             let chunk_size = std::cmp::min(remaining, Self::CHUNK_OVERHEAD + Self::BLOCK_SIZE);
 
@@ -245,6 +246,7 @@ impl SF32LB58Tool {
         tracing::trace!("Waiting for OK response with timeout: {}ms", timeout_ms);
 
         loop {
+            self.base.check_cancelled()?;
             let elapsed = start_time.elapsed().unwrap().as_millis() as u64;
             if elapsed > timeout_ms {
                 let response_str = String::from_utf8_lossy(&buffer);

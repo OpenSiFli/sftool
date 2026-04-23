@@ -205,6 +205,7 @@ impl SF32LB56Tool {
 
         // 等待擦除完成
         loop {
+            self.base.check_cancelled()?;
             let elapsed = now.elapsed().unwrap().as_millis();
             if elapsed > 30000 {
                 // 擦除可能需要更长时间
