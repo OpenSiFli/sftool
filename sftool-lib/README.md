@@ -52,7 +52,7 @@ sftool-lib = "0.1.7"
 
 - **Port Settings**: Serial port path and communication parameters
 - **Chip Selection**: Target chip type (SF32LB52, SF32LB56, SF32LB58)
-- **Memory Type**: Storage type selection (NOR, NAND, SD)
+- **Memory Type**: Storage type selection (NOR, NAND, SD; SF32LB58 also supports `*_type1` pinout variants)
 - **Baud Rate**: Configurable communication speed
 - **Reset Operations**: Before/after operation reset control
 - **Retry Logic**: Connection attempt configuration with timeout handling

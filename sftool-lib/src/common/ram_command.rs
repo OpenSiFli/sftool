@@ -79,6 +79,11 @@ impl Default for CommandConfig {
 /// 通用的RAM操作处理器，包含可复用的逻辑
 pub struct RamOps;
 
+pub fn is_sd_memory(memory_type: &str) -> bool {
+    let memory_type = memory_type.to_ascii_lowercase();
+    memory_type == "sd" || memory_type.starts_with("sd_")
+}
+
 impl RamOps {
     const DEFAULT_TIMEOUT_MS: u128 = 4000;
     const ERASE_ALL_TIMEOUT_MS: u128 = 30 * 1000;
@@ -104,7 +109,7 @@ impl RamOps {
             Command::EraseAll { .. } => Self::ERASE_ALL_TIMEOUT_MS,
             _ => Self::DEFAULT_TIMEOUT_MS,
         };
-        let timeout = if memory_type == "sd" {
+        let timeout = if is_sd_memory(memory_type) {
             timeout * 3
         } else {
             timeout

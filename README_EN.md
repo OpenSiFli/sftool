@@ -70,7 +70,7 @@ sftool [OPTIONS] config <FILE>
 ### Global Options
 
 - `-c, --chip <CHIP>`: Target chip type (currently supporting SF32LB52)
-- `-m, --memory <MEMORY>`: Storage type [nor, nand, sd] (default: nor, case-insensitive)
+- `-m, --memory <MEMORY>`: Storage type [nor, nor_type1, nand, nand_type1, nand_nobbm_type1, sd, sd_type1] (default: nor, case-insensitive; `*_type1` is for the SF32LB58 Type1 pinout)
 - `-p, --port <PORT>`: Serial port device path
 - `-b, --baud <BAUD>`: Baud rate used for flashing/reading (default: 1000000)
 - `--before <OPERATION>`: Operation before connecting to the chip [default_reset, no_reset, no_reset_no_sync] (default: default_reset)

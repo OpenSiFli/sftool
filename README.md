@@ -68,7 +68,7 @@ sftool [选项] config <FILE>
 ### 全局选项
 
 - `-c, --chip <CHIP>`: 目标芯片类型 (目前支持SF32LB52)
-- `-m, --memory <MEMORY>`: 存储类型 [nor, nand, sd] (默认: nor，不区分大小写)
+- `-m, --memory <MEMORY>`: 存储类型 [nor, nor_type1, nand, nand_type1, nand_nobbm_type1, sd, sd_type1] (默认: nor，不区分大小写；`*_type1` 用于 SF32LB58 Type1 pinout)
 - `-p, --port <PORT>`: 串行端口设备路径
 - `-b, --baud <BAUD>`: 闪存/读取时使用的串口波特率 (默认: 1000000)
 - `--before <OPERATION>`: 连接芯片前的操作 [default_reset, no_reset, no_reset_no_sync] (默认: default_reset)

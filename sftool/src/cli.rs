@@ -22,10 +22,18 @@ pub type MergedConfig = (
 pub enum Memory {
     #[clap(name = "nor")]
     Nor,
+    #[clap(name = "nor_type1")]
+    NorType1,
     #[clap(name = "nand")]
     Nand,
+    #[clap(name = "nand_type1")]
+    NandType1,
+    #[clap(name = "nand_nobbm_type1")]
+    NandNobbmType1,
     #[clap(name = "sd")]
     Sd,
+    #[clap(name = "sd_type1")]
+    SdType1,
 }
 
 #[derive(Parser, Debug)]
@@ -216,17 +224,23 @@ pub struct StubRead {
 fn memory_to_string(memory: &Memory) -> String {
     match memory {
         Memory::Nor => "nor".to_string(),
+        Memory::NorType1 => "nor_type1".to_string(),
         Memory::Nand => "nand".to_string(),
+        Memory::NandType1 => "nand_type1".to_string(),
+        Memory::NandNobbmType1 => "nand_nobbm_type1".to_string(),
         Memory::Sd => "sd".to_string(),
+        Memory::SdType1 => "sd_type1".to_string(),
     }
 }
 
 fn normalize_memory(memory: &str) -> Result<String> {
     let normalized = memory.to_ascii_lowercase();
     match normalized.as_str() {
-        "nor" | "nand" | "sd" => Ok(normalized),
+        "nor" | "nor_type1" | "nand" | "nand_type1" | "nand_nobbm_type1" | "sd" | "sd_type1" => {
+            Ok(normalized)
+        }
         _ => bail!(
-            "Invalid memory type '{}'. Must be one of: nor, nand, sd",
+            "Invalid memory type '{}'. Must be one of: nor, nor_type1, nand, nand_type1, nand_nobbm_type1, sd, sd_type1",
             memory
         ),
     }

@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::common::ram_command::{CommandConfig, RamOps};
+use crate::common::ram_command::{CommandConfig, RamOps, is_sd_memory};
 use crate::common::serial_io::{for_tool, sleep_with_cancel};
 use crate::common::sifli_debug::{SifliDebug, SifliUartCommand};
 use crate::sf32lb56::SF32LB56Tool;
@@ -42,7 +42,7 @@ impl DownloadStub for SF32LB56Tool {
         self.debug_command(SifliUartCommand::Exit)?;
 
         // 根据memory_type选择不同的等待条件
-        let is_sd = self.base.memory_type == "sd";
+        let is_sd = is_sd_memory(&self.base.memory_type);
         let mut io = for_tool(self);
         if is_sd {
             // SD卡模式：等待 "sd0 OPEN success"，超时5秒

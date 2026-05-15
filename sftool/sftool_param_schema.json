@@ -11,7 +11,7 @@
     },
     "memory": {
       "type": "string",
-      "pattern": "^(?:[nN][oO][rR]|[nN][aA][nN][dD]|[sS][dD])$",
+      "pattern": "^(?:[nN][oO][rR](?:_[tT][yY][pP][eE]1)?|[nN][aA][nN][dD](?:_[tT][yY][pP][eE]1|_[nN][oO][bB][bB][mM]_[tT][yY][pP][eE]1)?|[sS][dD](?:_[tT][yY][pP][eE]1)?)$",
       "default": "nor",
       "description": "Memory type (case-insensitive)"
     },

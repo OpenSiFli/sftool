@@ -16,8 +16,12 @@ pub static CHIP_FILE_NAME: phf::Map<&'static str, &'static str> = phf_map! {
     "sf32lb56_nand" => "ram_patch_56X_NAND.bin",
     "sf32lb56_sd" => "ram_patch_56X_SD.bin",
     "sf32lb58_nor" => "ram_patch_58x.bin",
+    "sf32lb58_nor_type1" => "ram_patch_58X_TYPE1.bin",
     "sf32lb58_nand" => "ram_patch_58X_NAND.bin",
-    "sf32lb58_sd" => "ram_patch_SD.bin",
+    "sf32lb58_nand_type1" => "ram_patch_58X_NAND_TYPE1.bin",
+    "sf32lb58_nand_nobbm_type1" => "ram_patch_58X_NAND_NOBBM_TYPE1.bin",
+    "sf32lb58_sd" => "ram_patch_58X_SD.bin",
+    "sf32lb58_sd_type1" => "ram_patch_58x_SD_Type1.bin",
 };
 
 // 签名公钥文件常量
