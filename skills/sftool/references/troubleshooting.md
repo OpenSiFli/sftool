@@ -29,6 +29,7 @@
 
 ## Chip or Memory Mismatch
 
-- Supported chips in the current CLI are `SF32LB52`, `SF32LB55`, `SF32LB56`, and `SF32LB58`.
+- Supported chips in the current CLI are `SF32LB52`, `SF32LB55`, `SF32LB56`, `SF32LB57`, and `SF32LB58`.
 - Supported memory types are `nor`, `nor_type1`, `nand`, `nand_type1`, `nand_nobbm_type1`, `sd`, and `sd_type1`.
+- `SF32LB57` currently supports only `nor`; do not use `nand` or `sd` with that chip.
 - Keep `memory` at `nor` unless the user says otherwise.

@@ -93,6 +93,7 @@ pub fn chip_key(chip_type: &ChipType) -> &'static str {
         ChipType::SF32LB52 => "sf32lb52",
         ChipType::SF32LB55 => "sf32lb55",
         ChipType::SF32LB56 => "sf32lb56",
+        ChipType::SF32LB57 => "sf32lb57",
         ChipType::SF32LB58 => "sf32lb58",
     }
 }

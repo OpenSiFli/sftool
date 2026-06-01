@@ -19,6 +19,7 @@ pub mod common;
 pub mod sf32lb52;
 pub mod sf32lb55;
 pub mod sf32lb56;
+pub mod sf32lb57;
 pub mod sf32lb58;
 
 // 重新导出 trait，使其在 crate 外部可用
@@ -71,6 +72,7 @@ pub fn load_stub_bytes(
         ChipType::SF32LB52 => "sf32lb52",
         ChipType::SF32LB55 => "sf32lb55",
         ChipType::SF32LB56 => "sf32lb56",
+        ChipType::SF32LB57 => "sf32lb57",
         ChipType::SF32LB58 => "sf32lb58",
     };
     let key = format!("{}_{}", chip_key, memory_type.to_lowercase());
@@ -123,6 +125,8 @@ pub enum ChipType {
     SF32LB55,
     #[cfg_attr(feature = "cli", clap(name = "SF32LB56"))]
     SF32LB56,
+    #[cfg_attr(feature = "cli", clap(name = "SF32LB57"))]
+    SF32LB57,
     #[cfg_attr(feature = "cli", clap(name = "SF32LB58"))]
     SF32LB58,
 }
@@ -328,6 +332,7 @@ pub fn create_sifli_tool(chip_type: ChipType, base_param: SifliToolBase) -> Box<
         ChipType::SF32LB52 => sf32lb52::SF32LB52Tool::create_tool(base_param),
         ChipType::SF32LB55 => sf32lb55::SF32LB55Tool::create_tool(base_param),
         ChipType::SF32LB56 => sf32lb56::SF32LB56Tool::create_tool(base_param),
+        ChipType::SF32LB57 => sf32lb57::SF32LB57Tool::create_tool(base_param),
         ChipType::SF32LB58 => sf32lb58::SF32LB58Tool::create_tool(base_param),
     }
 }

@@ -10,7 +10,7 @@ SFTool是一个专为SiFli系列SoC（系统芯片）设计的开源工具，用
 
 ## 特性
 
-- 支持SF32LB52、SF32LB56、SF32LB58芯片
+- 支持SF32LB52、SF32LB55、SF32LB56、SF32LB57、SF32LB58芯片
 - 支持多种存储类型：NOR闪存、NAND闪存和SD卡
 - 可配置的串口参数
 - 可靠的闪存写入功能，支持验证和压缩
@@ -67,8 +67,8 @@ sftool [选项] config <FILE>
 
 ### 全局选项
 
-- `-c, --chip <CHIP>`: 目标芯片类型 (目前支持SF32LB52)
-- `-m, --memory <MEMORY>`: 存储类型 [nor, nor_type1, nand, nand_type1, nand_nobbm_type1, sd, sd_type1] (默认: nor，不区分大小写；`*_type1` 用于 SF32LB58 Type1 pinout)
+- `-c, --chip <CHIP>`: 目标芯片类型 (目前支持SF32LB52、SF32LB55、SF32LB56、SF32LB57、SF32LB58)
+- `-m, --memory <MEMORY>`: 存储类型 [nor, nor_type1, nand, nand_type1, nand_nobbm_type1, sd, sd_type1] (默认: nor，不区分大小写；`*_type1` 用于 SF32LB58 Type1 pinout；SF32LB57 目前仅支持 nor)
 - `-p, --port <PORT>`: 串行端口设备路径
 - `-b, --baud <BAUD>`: 闪存/读取时使用的串口波特率 (默认: 1000000)
 - `--before <OPERATION>`: 连接芯片前的操作 [default_reset, no_reset, no_reset_no_sync] (默认: default_reset)

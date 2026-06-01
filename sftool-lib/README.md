@@ -10,7 +10,7 @@ A Rust library for communicating with SiFli SoC (System on Chip) devices through
 
 ## Features
 
-- **Multi-chip Support**: SF32LB52, SF32LB56, SF32LB58
+- **Multi-chip Support**: SF32LB52, SF32LB55, SF32LB56, SF32LB57, SF32LB58
 - **Multiple Storage Types**: NOR flash, NAND flash, and SD card
 - **Configurable Serial Parameters**: Customizable baud rates and connection settings
 - **Reliable Flash Operations**: Write, read, and erase with verification and compression support
@@ -20,7 +20,9 @@ A Rust library for communicating with SiFli SoC (System on Chip) devices through
 ## Supported Chips
 
 - **SF32LB52**: Full support for NOR/NAND flash and SD card operations
+- **SF32LB55**: Support for NOR flash and SD card operations
 - **SF32LB56**: Support for flash operations and memory management
+- **SF32LB57**: Support for NOR flash operations
 - **SF32LB58**: Extended support for advanced flash operations
 
 ## Installation
@@ -51,8 +53,8 @@ sftool-lib = "0.1.7"
 ### Base Configuration
 
 - **Port Settings**: Serial port path and communication parameters
-- **Chip Selection**: Target chip type (SF32LB52, SF32LB56, SF32LB58)
-- **Memory Type**: Storage type selection (NOR, NAND, SD; SF32LB58 also supports `*_type1` pinout variants)
+- **Chip Selection**: Target chip type (SF32LB52, SF32LB55, SF32LB56, SF32LB57, SF32LB58)
+- **Memory Type**: Storage type selection (NOR, NAND, SD; SF32LB58 also supports `*_type1` pinout variants; SF32LB57 currently supports only NOR)
 - **Baud Rate**: Configurable communication speed
 - **Reset Operations**: Before/after operation reset control
 - **Retry Logic**: Connection attempt configuration with timeout handling

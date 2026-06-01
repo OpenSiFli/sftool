@@ -10,7 +10,7 @@ SFTool is an open-source tool specifically designed for SiFli series SoCs (Syste
 
 ## Features
 
-- Support for SF32LB52, SF32LB56, SF32LB58 chips
+- Support for SF32LB52, SF32LB55, SF32LB56, SF32LB57, SF32LB58 chips
 - Support for multiple storage types: NOR flash, NAND flash, and SD card
 - Configurable serial port parameters
 - Reliable flash writing functionality with verification and compression support
@@ -69,8 +69,8 @@ sftool [OPTIONS] config <FILE>
 
 ### Global Options
 
-- `-c, --chip <CHIP>`: Target chip type (currently supporting SF32LB52)
-- `-m, --memory <MEMORY>`: Storage type [nor, nor_type1, nand, nand_type1, nand_nobbm_type1, sd, sd_type1] (default: nor, case-insensitive; `*_type1` is for the SF32LB58 Type1 pinout)
+- `-c, --chip <CHIP>`: Target chip type (currently supporting SF32LB52, SF32LB55, SF32LB56, SF32LB57, SF32LB58)
+- `-m, --memory <MEMORY>`: Storage type [nor, nor_type1, nand, nand_type1, nand_nobbm_type1, sd, sd_type1] (default: nor, case-insensitive; `*_type1` is for the SF32LB58 Type1 pinout; SF32LB57 currently supports only `nor`)
 - `-p, --port <PORT>`: Serial port device path
 - `-b, --baud <BAUD>`: Baud rate used for flashing/reading (default: 1000000)
 - `--before <OPERATION>`: Operation before connecting to the chip [default_reset, no_reset, no_reset_no_sync] (default: default_reset)

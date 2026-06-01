@@ -204,6 +204,7 @@ impl SfToolConfig {
             "SF32LB52" => Ok(ChipType::SF32LB52),
             "SF32LB55" => Ok(ChipType::SF32LB55),
             "SF32LB56" => Ok(ChipType::SF32LB56),
+            "SF32LB57" => Ok(ChipType::SF32LB57),
             "SF32LB58" => Ok(ChipType::SF32LB58),
             _ => Err(format!("Invalid chip type: {}", self.chip)),
         }

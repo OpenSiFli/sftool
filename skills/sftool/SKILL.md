@@ -1,6 +1,6 @@
 ---
 name: sftool
-description: Use sftool for SiFli flashing, flash readback, JSON config generation, and serial troubleshooting on SF32LB52, SF32LB55, SF32LB56, and SF32LB58 devices.
+description: Use sftool for SiFli flashing, flash readback, JSON config generation, and serial troubleshooting on SF32LB52, SF32LB55, SF32LB56, SF32LB57, and SF32LB58 devices.
 ---
 
 # SFTool

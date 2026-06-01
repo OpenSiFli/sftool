@@ -6,7 +6,7 @@
   "properties": {
     "chip": {
       "type": "string",
-      "enum": [ "SF32LB52", "SF32LB56", "SF32LB58" ],
+      "enum": [ "SF32LB52", "SF32LB55", "SF32LB56", "SF32LB57", "SF32LB58" ],
       "description": "Target chip type"
     },
     "memory": {
