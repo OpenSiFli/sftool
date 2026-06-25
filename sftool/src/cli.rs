@@ -246,14 +246,6 @@ fn normalize_memory(memory: &str) -> Result<String> {
     }
 }
 
-fn validate_chip_memory(chip: &ChipType, memory: &str) -> Result<()> {
-    if matches!(chip, ChipType::SF32LB57) && memory != "nor" {
-        bail!("SF32LB57 currently supports only NOR memory; NAND and SD are not supported yet");
-    }
-
-    Ok(())
-}
-
 /// Merge CLI arguments with configuration file, CLI args take precedence
 pub fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<MergedConfig> {
     // 使用配置文件或默认配置
@@ -272,7 +264,6 @@ pub fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<MergedCo
         .map(memory_to_string)
         .unwrap_or_else(|| base_config.memory.clone());
     let memory = normalize_memory(&memory_raw)?;
-    validate_chip_memory(&chip, &memory)?;
 
     let port = args
         .port
