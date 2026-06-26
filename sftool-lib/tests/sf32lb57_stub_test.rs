@@ -4,15 +4,17 @@ use sftool_lib::{ChipType, load_stub_bytes};
 fn loads_sf32lb57_nor_nand_sd_stub() {
     let nor = load_stub_bytes(None, ChipType::SF32LB57, "nor")
         .expect("SF32LB57 NOR stub should be embedded");
+    let nand = load_stub_bytes(None, ChipType::SF32LB57, "nand")
+        .expect("SF32LB57 NAND stub should be embedded");
+    let sd = load_stub_bytes(None, ChipType::SF32LB57, "sd")
+        .expect("SF32LB57 SD stub should be embedded");
 
     assert!(!nor.is_empty());
-
-    for memory in ["nand", "sd"] {
-        let data = load_stub_bytes(None, ChipType::SF32LB57, memory)
-            .expect("SF32LB57 NAND/SD stub should be embedded");
-
-        assert_eq!(data, nor);
-    }
+    assert!(!nand.is_empty());
+    assert!(!sd.is_empty());
+    assert_ne!(nor, nand);
+    assert_ne!(nor, sd);
+    assert_ne!(nand, sd);
 }
 
 #[test]
