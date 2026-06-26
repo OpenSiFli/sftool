@@ -188,23 +188,16 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Install upload tools
-        run: |
-          pip install --upgrade pip
-          pip install coscmd tccli
-
-      - name: Configure COSCMD
-        run: |
-          coscmd config -a ${{ secrets.COS_DOCS_SECRET_ID }} -s ${{ secrets.COS_DOCS_SECRET_KEY }} -b ${{ secrets.COS_DOWNLOAD_BUCKET }} -r ${{ secrets.COS_DOWNLOAD_REGION }}
-
-      - name: Upload to COS
-        run: |
-          coscmd upload -rs --delete --yes artifacts/ github_assets/OpenSiFli/sftool/releases/download/${{ github.ref_name }}/
-
-      - name: Purge CDN Cache
-        env:
-          TENCENTCLOUD_SECRET_ID: ${{ secrets.COS_DOCS_SECRET_ID }}
-          TENCENTCLOUD_SECRET_KEY: ${{ secrets.COS_DOCS_SECRET_KEY }}
-          TENCENTCLOUD_REGION: ${{ secrets.COS_DOWNLOAD_REGION }}
-        run: |
-          tccli cdn PurgePathCache --cli-unfold-argument --Paths 'https://downloads.sifli.com/github_assets/OpenSiFli/sftool/releases/download/' --FlushType flush
+      - name: Upload to COS and purge CDN
+        uses: OpenSiFli/SiFliMirrorSync@v1
+        with:
+          secret_id: ${{ secrets.COS_DOCS_SECRET_ID }}
+          secret_key: ${{ secrets.COS_DOCS_SECRET_KEY }}
+          region: ${{ secrets.COS_DOWNLOAD_REGION }}
+          bucket: ${{ secrets.COS_DOWNLOAD_BUCKET }}
+          prefix: github_assets/OpenSiFli/sftool/releases/download/${{ github.ref_name }}/
+          artifacts: .
+          working_directory: artifacts
+          delete_remote: true
+          global: true
+          flush_url: https://downloads.sifli.com/github_assets/OpenSiFli/sftool/releases/download/
