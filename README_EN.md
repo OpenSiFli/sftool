@@ -63,9 +63,11 @@ The skill covers firmware flashing, readback, `config` JSON templates, region er
 ### Basic Command Format
 
 ```bash
-sftool [OPTIONS] COMMAND [COMMAND OPTIONS]
-sftool [OPTIONS] config <FILE>
+sftool [GLOBAL OPTIONS] <COMMAND> [COMMAND OPTIONS] [ARGS]
+sftool [GLOBAL OPTIONS] config <FILE>
 ```
+
+Run `sftool --help` or `sftool <COMMAND> --help` to view the help for the installed version.
 
 ### Global Options
 
@@ -76,24 +78,36 @@ sftool [OPTIONS] config <FILE>
 - `--before <OPERATION>`: Operation before connecting to the chip [default_reset, no_reset, no_reset_no_sync] (default: default_reset)
 - `--after <OPERATION>`: Operation after the tool completes [soft_reset, no_reset] (default: soft_reset)
 - `--connect-attempts <ATTEMPTS>`: Number of connection attempts, negative or 0 means infinite (default: 3)
-- `--compat` : Compatibility mode, should be turned on if timeout errors or verification failures occur frequently after downloading.
+- `--compat <true|false>`: Compatibility mode (default: false). Set it to `true` after repeated timeout errors or verification failures.
+- `--stub <STUB>`: Path to an external stub file. Both absolute paths and paths relative to the current working directory are supported. It overrides the embedded stub for the selected chip and memory type.
+- `--stub-config <STUB_CONFIG_JSON>`: Apply this JSON configuration to the stub before flashing, reading, or erasing. It can also be placed after the subcommand.
+- `-q, --quiet`: Suppress progress bar output.
+- `-h, --help`: Print help information.
+- `-V, --version`: Print the sftool version.
 
-### JSON Config (sftool_param.json)
+Global options go before the subcommand, for example:
 
-You can describe a command in a JSON file (for automation) and run it with the `config` subcommand:
+```bash
+sftool -c SF32LB52 -m nor -p /dev/ttyUSB0 --baud 1000000 write_flash app.bin@0x12020000
+sftool -c SF32LB52 -p /dev/ttyUSB0 --compat true read_flash dump.bin@0x12020000:0x00100000
+```
+
+### Commands and Arguments
+
+`config <FILE>`
+
+Execute one command from a JSON file. `<FILE>` is the configuration path; global CLI options override values with the same name in JSON.
 
 ```bash
 sftool config sftool_param.json
-
-# CLI options can override or fill missing fields in the JSON
 sftool -c SF32LB52 -p /dev/ttyUSB0 config sftool_param.json
 ```
 
-The JSON file does not need to include every field; CLI options and defaults are merged first, and
-validation fails only if required values are still missing. The schema is in
-`sftool_param_schema.json` in the repository.
+The root object must contain exactly one command block: `write_flash`, `read_flash`, `erase_flash`, `erase_region`, or `stub`. Common fields are `chip`, `memory`, `port`, `baud`, `before`, `after`, `connect_attempts`, `compat`, `quiet`, and `stub_path`. See [`sftool/sftool_param_schema.json`](sftool/sftool_param_schema.json) for the complete structure.
 
-### Write Flash Command
+The JSON file does not need to include every field. CLI options and defaults are merged with the JSON configuration, with CLI options taking precedence; validation fails only if required values are still missing.
+
+`write_flash [OPTIONS] <FILE@ADDRESS>...`
 
 ```bash
 # Linux/Mac
@@ -102,12 +116,55 @@ sftool -c SF32LB52 -p /dev/ttyUSB0 write_flash [OPTIONS] <FILE@ADDRESS>...
 sftool -c SF32LB52 -p COM9 write_flash [OPTIONS] <FILE@ADDRESS>...
 ```
 
-#### Write Flash Options
+Write flash options:
 
 - `--verify`: Verify flash data after writing
 - `-u, --no-compress`: Disable data compression during transmission
 - `-e, --erase-all`: Erase all flash sectors before programming (not just written sectors)
-- `<FILE@ADDRESS>`: Binary file and its target address, @ADDRESS is optional if the file format contains address information
+- `<FILE@ADDRESS>`: Binary file and target address; `@ADDRESS` is optional when the file format contains address information. This argument can be repeated.
+
+`read_flash <FILE@ADDRESS:SIZE>...`
+
+Read one or more binary regions from flash. The file is the output path; address and size accept decimal or `0x` hexadecimal values.
+
+```bash
+sftool -c SF32LB52 -p /dev/ttyUSB0 read_flash dump.bin@0x12020000:0x00100000
+sftool -c SF32LB52 -p COM7 read_flash boot.bin@0x12010000:0x00010000 app.bin@0x12020000:0x00200000
+```
+
+`erase_flash <ADDRESS>`
+
+Erase the entire flash associated with the specified address.
+
+```bash
+sftool -c SF32LB52 -p /dev/ttyUSB0 erase_flash 0x12000000
+```
+
+`erase_region <ADDRESS:SIZE>...`
+
+Erase one or more selected regions.
+
+```bash
+sftool -c SF32LB52 -p /dev/ttyUSB0 erase_region 0x12020000:0x00100000
+sftool -c SF32LB52 -p /dev/ttyUSB0 erase_region 0x12010000:0x00010000 0x12020000:0x00100000
+```
+
+`stub`
+
+Manage stub configuration embedded in AXF/ELF driver files without connecting to a chip. Choose exactly one subcommand:
+
+- `stub write --stub-config <JSON> <FILE>...`: Write a JSON configuration to one or more AXF/ELF files.
+- `stub clear <FILE>...`: Clear the stub configuration in one or more files.
+- `stub read [--output <JSON>] <FILE>...`: Read and print the configuration. With `--output`, write it to a JSON file; only one input file is allowed.
+
+```bash
+sftool stub write --stub-config stub_config.json driver.axf
+sftool stub clear driver.axf driver.elf
+sftool stub read driver.axf
+sftool stub read --output extracted_stub.json driver.axf
+```
+
+See [`sftool/stub_config_schema.json`](sftool/stub_config_schema.json) for stub fields and allowed values.
 
 ### Examples
 
