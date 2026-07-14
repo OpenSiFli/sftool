@@ -61,9 +61,11 @@ npx skills add OpenSiFli/sftool --skill sftool -a github-copilot
 ### 基本命令格式
 
 ```bash
-sftool [选项] 命令 [命令选项]
-sftool [选项] config <FILE>
+sftool [全局选项] <命令> [命令选项] [参数]
+sftool [全局选项] config <FILE>
 ```
+
+运行 `sftool --help` 或 `sftool <命令> --help` 可以查看当前版本的帮助。
 
 ### 全局选项
 
@@ -74,23 +76,36 @@ sftool [选项] config <FILE>
 - `--before <OPERATION>`: 连接芯片前的操作 [default_reset, no_reset, no_reset_no_sync] (默认: default_reset)
 - `--after <OPERATION>`: 工具完成后的操作 [soft_reset, no_reset] (默认: soft_reset)
 - `--connect-attempts <ATTEMPTS>`: 连接尝试次数，负数或0表示无限次 (默认: 3)
-- `--compat` : 兼容模式，如果经常出现超时错误或下载后校验失败，则应打开此选项。
+- `--compat <true|false>`: 兼容模式 (默认: false)。如果经常出现超时错误或下载后校验失败，可设置为 `true`。
+- `--stub <STUB>`: 外部 stub 文件路径，支持绝对路径或相对于当前工作目录的路径。指定后覆盖对应芯片和存储类型的内嵌 stub。
+- `--stub-config <STUB_CONFIG_JSON>`: 在执行刷写、读回或擦除操作前，将 JSON 配置写入待使用的 stub。该选项也可放在子命令后。
+- `-q, --quiet`: 不显示进度条。
+- `-h, --help`: 显示帮助信息。
+- `-V, --version`: 显示版本号。
 
-### JSON 参数文件（sftool_param.json）
+全局选项应放在子命令之前，例如：
 
-可以用 JSON 描述一次命令并通过 `config` 子命令执行：
+```bash
+sftool -c SF32LB52 -m nor -p /dev/ttyUSB0 --baud 1000000 write_flash app.bin@0x12020000
+sftool -c SF32LB52 -p /dev/ttyUSB0 --compat true read_flash dump.bin@0x12020000:0x00100000
+```
+
+### 命令和参数
+
+`config <FILE>`
+
+从 JSON 文件执行一次命令。`<FILE>` 是配置文件路径；全局 CLI 参数会覆盖 JSON 中的同名字段。
 
 ```bash
 sftool config sftool_param.json
-
-# CLI 参数可以覆盖或补充 JSON 中的字段
 sftool -c SF32LB52 -p /dev/ttyUSB0 config sftool_param.json
 ```
 
-JSON 文件可以不包含所有字段，CLI 参数与默认值会先合并；合并后仍缺少必须参数才会报错。
-schema 位于仓库中的 `sftool_param_schema.json`。
+配置根对象只能包含一个命令块：`write_flash`、`read_flash`、`erase_flash`、`erase_region` 或 `stub`。公共字段为 `chip`、`memory`、`port`、`baud`、`before`、`after`、`connect_attempts`、`compat`、`quiet` 和 `stub_path`。完整结构见 [`sftool/sftool_param_schema.json`](sftool/sftool_param_schema.json)。
 
-### 写入闪存命令
+JSON 文件不需要包含所有字段，CLI 参数和默认值会先与 JSON 配置合并，CLI 参数优先；合并后仍缺少必须参数时才会报错。
+
+`write_flash [选项] <文件@地址>...`
 
 ```bash
 # Linux/Mac
@@ -99,12 +114,70 @@ sftool -c SF32LB52 -p /dev/ttyUSB0 write_flash [选项] <文件@地址>...
 sftool -c SF32LB52 -p COM9 write_flash [选项] <文件@地址>...
 ```
 
-#### 写入闪存选项
+写入闪存选项：
 
 - `--verify`: 验证刚写入的闪存数据
 - `-u, --no-compress`: 传输期间禁用数据压缩
 - `-e, --erase-all`: 在编程前擦除所有闪存区域（不仅仅是写入区域）
-- `<文件@地址>`: 二进制文件及其目标地址，如果文件格式包含地址信息，@地址部分是可选的
+- `<文件@地址>`: 二进制文件及其目标地址；如果文件格式包含地址信息，`@地址` 部分可以省略。可重复传入多个文件。
+
+`read_flash <文件@地址:大小>...`
+
+从闪存读出一个或多个二进制区域。`<文件@地址:大小>` 中的文件是输出路径，地址和大小支持十进制或 `0x` 十六进制格式。
+
+```bash
+sftool -c SF32LB52 -p /dev/ttyUSB0 read_flash dump.bin@0x12020000:0x00100000
+sftool -c SF32LB52 -p COM7 read_flash boot.bin@0x12010000:0x00010000 app.bin@0x12020000:0x00200000
+```
+
+`erase_flash <地址>`
+
+擦除指定地址对应的整个闪存，地址支持十进制或 `0x` 十六进制格式。
+
+```bash
+sftool -c SF32LB52 -p /dev/ttyUSB0 erase_flash 0x12000000
+```
+
+`erase_region <地址:大小>...`
+
+擦除一个或多个指定区域，区域格式为 `<地址:大小>`。
+
+```bash
+sftool -c SF32LB52 -p /dev/ttyUSB0 erase_region 0x12020000:0x00100000
+sftool -c SF32LB52 -p /dev/ttyUSB0 erase_region 0x12010000:0x00010000 0x12020000:0x00100000
+```
+
+`stub` 命令
+
+用于修改 AXF/ELF 驱动文件中的 stub 配置，不连接芯片。三个子命令只能选择一个：
+
+- `stub write --stub-config <JSON> <文件>...`: 将 JSON 配置写入一个或多个 AXF/ELF 文件。
+- `stub clear <文件>...`: 清空一个或多个文件中的 stub 配置。
+- `stub read [--output <JSON>] <文件>...`: 读取并打印配置；使用 `--output` 时将配置写入 JSON 文件，且只能提供一个输入文件。
+
+```bash
+sftool stub write --stub-config stub_config.json driver.axf
+sftool stub clear driver.axf driver.elf
+sftool stub read driver.axf
+sftool stub read --output extracted_stub.json driver.axf
+```
+
+stub 配置的字段和可选值见 [`sftool/stub_config_schema.json`](sftool/stub_config_schema.json)。例如：
+
+```json
+{
+  "pins": [{"port": "PA", "number": 10, "level": "high"}],
+  "flash": [{
+    "media": "nor",
+    "driver_index": 0,
+    "manufacturer_id": "0xef",
+    "device_type": "0x40",
+    "density_id": "0x18",
+    "flags": 0,
+    "capacity_bytes": "8M"
+  }]
+}
+```
 
 ### 示例
 
@@ -115,7 +188,7 @@ Linux/Mac:
 sftool -c SF32LB52 -p /dev/ttyUSB0 write_flash app.bin@0x12020000
 
 # 写入多个文件到不同地址
-sftool -c SF32LB52 -p /dev/ttyUSB0 write_flash bootloader.bin@0x12010000 app.bin@0x12020000 ftab.bin@0x12000000
+sftool -c SF32LB52 -p COM7 write_flash bootloader.bin@0x12010000 app.bin@0x12020000 ftab.bin@0x12000000
 
 # 写入并验证
 sftool -c SF32LB52 -p /dev/ttyUSB0 write_flash --verify app.bin@0x12020000
