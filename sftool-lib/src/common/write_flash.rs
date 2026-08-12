@@ -194,6 +194,11 @@ impl FlashWriter {
                     &mut previous_byte,
                     &mut patches,
                 )?;
+                stream_offset = stream_offset
+                    .checked_add(bytes_read as u32)
+                    .ok_or_else(|| {
+                        Error::invalid_input("flash length overflow during collision-safe write")
+                    })?;
             }
             tool.check_cancelled()?;
             let res = tool.send_data(&buffer[..bytes_read])?;
@@ -206,11 +211,6 @@ impl FlashWriter {
                     file.address
                 )));
             }
-            stream_offset = stream_offset
-                .checked_add(bytes_read as u32)
-                .ok_or_else(|| {
-                    Error::invalid_input("flash length overflow during collision-safe write")
-                })?;
         }
 
         patch_hazardous_bytes(tool, &patches)?;
@@ -444,7 +444,11 @@ mod tests {
 
         fn send_data(&mut self, data: &[u8]) -> Result<Response> {
             self.sent_data.push(data.to_vec());
-            Ok(Response::Ok)
+            Ok(if data.len() == 128 * 1024 {
+                Response::RxWait
+            } else {
+                Response::Ok
+            })
         }
     }
 
@@ -580,6 +584,33 @@ mod tests {
                 len: 1,
                 data
             } if data == "77"
+        ));
+    }
+
+    #[test]
+    fn collision_safe_writer_tracks_addresses_after_rx_wait() {
+        let mut data = vec![0; 128 * 1024 + 1];
+        data[128 * 1024 - 1] = 0x40;
+        data[128 * 1024] = 0x72;
+        let file = WriteFlashFile {
+            address: 0x1202_0000,
+            file: file_with_data(&data),
+            crc32: 0x1234_5678,
+        };
+        let mut tool = test_tool();
+
+        FlashWriter::write_file_incremental_collision_safe(&mut tool, &file, false).unwrap();
+
+        assert_eq!(tool.sent_data.len(), 2);
+        assert_eq!(tool.sent_data[0][128 * 1024 - 1], 0x40);
+        assert_eq!(tool.sent_data[1], [0xff]);
+        assert!(matches!(
+            &tool.commands[2],
+            Command::WriteMultipleBytes {
+                address: 0x1204_0000,
+                len: 1,
+                data
+            } if data == "72"
         ));
     }
 }
