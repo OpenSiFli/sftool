@@ -12,7 +12,20 @@ impl WriteFlashTrait for SF32LB52Tool {
         }
 
         for file in params.files.iter() {
-            if !params.erase_all {
+            let requires_safe_transport = FlashWriter::contains_hazardous_marker(&file.file)?;
+
+            if requires_safe_transport {
+                if params.erase_all {
+                    FlashWriter::write_file_full_erase_collision_safe(
+                        self,
+                        file,
+                        params.verify,
+                        packet_size,
+                    )?;
+                } else {
+                    FlashWriter::write_file_incremental_collision_safe(self, file, params.verify)?;
+                }
+            } else if !params.erase_all {
                 FlashWriter::write_file_incremental(self, file, params.verify)?;
             } else {
                 FlashWriter::write_file_full_erase(self, file, params.verify, packet_size)?;

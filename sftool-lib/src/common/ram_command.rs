@@ -21,6 +21,13 @@ pub enum Command {
     #[strum(to_string = "burn_write 0x{address:08x} 0x{len:08x}\r")]
     Write { address: u32, len: u32 },
 
+    #[strum(to_string = "burn_write_muti_bytes {len} 0x{address:08x} {data}\r")]
+    WriteMultipleBytes {
+        address: u32,
+        len: usize,
+        data: String,
+    },
+
     #[strum(to_string = "burn_read 0x{address:08x} 0x{len:08x}\r")]
     Read { address: u32, len: u32 },
 
@@ -29,6 +36,25 @@ pub enum Command {
 
     #[strum(to_string = "burn_speed {baud} {delay}\r")]
     SetBaud { baud: u32, delay: u32 },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Command;
+
+    #[test]
+    fn formats_write_multiple_bytes_for_existing_stub_command() {
+        let command = Command::WriteMultipleBytes {
+            address: 0x1202_0040,
+            len: 4,
+            data: "007e79ff".to_owned(),
+        };
+
+        assert_eq!(
+            command.to_string(),
+            "burn_write_muti_bytes 4 0x12020040 007e79ff\r"
+        );
+    }
 }
 
 /// 通用的命令响应枚举
