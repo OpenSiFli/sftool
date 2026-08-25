@@ -1,8 +1,9 @@
+use crate::common::debug_sequence::DebugSequenceReplacementInfo;
 use crate::common::ram_command::{Command, RamCommand, Response};
 use crate::common::serial_io::for_tool;
 use crate::progress::{ProgressOperation, ProgressStatus};
 use crate::{Error, Result, SifliToolTrait, WriteFlashFile};
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 
 /// 通用的Flash写入操作实现
 pub struct FlashWriter;
@@ -55,6 +56,34 @@ impl FlashWriter {
         Ok(())
     }
 
+    fn prepare_debug_sequence_replacement<T>(
+        tool: &mut T,
+        file: &WriteFlashFile,
+    ) -> Result<Option<DebugSequenceReplacementInfo>>
+    where
+        T: SifliToolTrait + RamCommand,
+    {
+        if !tool.supports_debug_sequence_replacement()? {
+            return Ok(None);
+        }
+
+        let info = DebugSequenceReplacementInfo::scan_file(&file.file)?;
+        let response = tool.send_debug_sequence_replacement_info(&info)?;
+        if response != Response::Ok {
+            return Err(Error::protocol(format!(
+                "burn_info rejected replacement table for 0x{:08X}: {response:?}",
+                file.address
+            )));
+        }
+
+        tracing::debug!(
+            address = format_args!("0x{:08X}", file.address),
+            replacement_count = info.len(),
+            "prepared Debug IP-safe flash transfer"
+        );
+        Ok(Some(info))
+    }
+
     /// 写入单个文件到Flash（非全擦除模式）
     pub fn write_file_incremental<T>(
         tool: &mut T,
@@ -83,6 +112,7 @@ impl FlashWriter {
         }
 
         re_download_spinner.finish(ProgressStatus::Required);
+        let replacement_info = Self::prepare_debug_sequence_replacement(tool, file)?;
 
         let download_bar = progress.create_bar(
             file.file.metadata()?.len(),
@@ -105,6 +135,8 @@ impl FlashWriter {
 
         let mut buffer = vec![0u8; 128 * 1024];
         let mut reader = BufReader::new(&file.file);
+        reader.seek(SeekFrom::Start(0))?;
+        let mut transfer_offset = 0u64;
 
         loop {
             tool.check_cancelled()?;
@@ -113,9 +145,14 @@ impl FlashWriter {
                 break;
             }
             tool.check_cancelled()?;
-            let res = tool.send_data(&buffer[..bytes_read])?;
+            let data = &mut buffer[..bytes_read];
+            if let Some(info) = &replacement_info {
+                info.apply_to_chunk(transfer_offset, data);
+            }
+            let res = tool.send_data(data)?;
             if res == Response::RxWait {
                 download_bar.inc(bytes_read as u64);
+                transfer_offset += bytes_read as u64;
                 continue;
             } else if res != Response::Ok {
                 return Err(Error::protocol(format!(
@@ -152,6 +189,7 @@ impl FlashWriter {
         T: SifliToolTrait + RamCommand,
     {
         tool.check_cancelled()?;
+        let replacement_info = Self::prepare_debug_sequence_replacement(tool, file)?;
         let progress = tool.progress();
         let download_bar = progress.create_bar(
             file.file.metadata()?.len(),
@@ -163,8 +201,10 @@ impl FlashWriter {
 
         let mut buffer = vec![0u8; packet_size];
         let mut reader = BufReader::new(&file.file);
+        reader.seek(SeekFrom::Start(0))?;
 
         let mut address = file.address;
+        let mut transfer_offset = 0u64;
         loop {
             tool.check_cancelled()?;
             let bytes_read = reader.read(&mut buffer)?;
@@ -184,7 +224,11 @@ impl FlashWriter {
                 )?;
                 io.flush()?;
             }
-            let res = tool.send_data(&buffer[..bytes_read])?;
+            let data = &mut buffer[..bytes_read];
+            if let Some(info) = &replacement_info {
+                info.apply_to_chunk(transfer_offset, data);
+            }
+            let res = tool.send_data(data)?;
             if res != Response::Ok {
                 return Err(Error::protocol(format!(
                     "write flash failed during transfer at 0x{:08X}",
@@ -192,6 +236,7 @@ impl FlashWriter {
                 )));
             }
             address += bytes_read as u32;
+            transfer_offset += bytes_read as u64;
             download_bar.inc(bytes_read as u64);
         }
 

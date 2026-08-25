@@ -1,8 +1,9 @@
-use crate::Result;
+use crate::common::debug_sequence::DebugSequenceReplacementInfo;
 use crate::common::ram_command::{CommandConfig, RamOps, is_sd_memory};
 use crate::common::serial_io::{for_tool, sleep_with_cancel};
 use crate::common::sifli_debug::{SifliDebug, SifliUartCommand};
 use crate::sf32lb57::SF32LB57Tool;
+use crate::{Error, Result};
 
 pub use crate::common::ram_command::{Command, DownloadStub, RamCommand, Response};
 
@@ -23,6 +24,39 @@ impl RamCommand for SF32LB57Tool {
         RamOps::send_data_and_wait_response(&mut io, data, &config)
     }
 
+    fn supports_debug_sequence_replacement(&mut self) -> Result<bool> {
+        if let Some(supported) = self.debug_sequence_replacement_supported {
+            return Ok(supported);
+        }
+
+        let supported = match self
+            .send_debug_sequence_replacement_info(&DebugSequenceReplacementInfo::empty())
+        {
+            Ok(Response::Ok) => true,
+            Ok(response) => {
+                tracing::debug!(?response, "RAM patch does not support burn_info");
+                false
+            }
+            Err(Error::Cancelled) => return Err(Error::Cancelled),
+            Err(error) => {
+                tracing::debug!(%error, "RAM patch does not support burn_info");
+                false
+            }
+        };
+        self.debug_sequence_replacement_supported = Some(supported);
+        Ok(supported)
+    }
+
+    fn send_debug_sequence_replacement_info(
+        &mut self,
+        info: &DebugSequenceReplacementInfo,
+    ) -> Result<Response> {
+        let data = info.encode()?;
+        let memory_type = self.base.memory_type.clone();
+        let mut io = for_tool(self);
+        RamOps::send_debug_sequence_replacement_info(&mut io, &data, memory_type.as_str())
+    }
+
     fn format_command(&self, cmd: &Command) -> String {
         match cmd {
             Command::EraseAll { address } => {
@@ -35,6 +69,7 @@ impl RamCommand for SF32LB57Tool {
 
 impl DownloadStub for SF32LB57Tool {
     fn download_stub(&mut self) -> Result<()> {
+        self.debug_sequence_replacement_supported = None;
         self.attempt_connect()?;
         self.download_stub_impl()?;
 

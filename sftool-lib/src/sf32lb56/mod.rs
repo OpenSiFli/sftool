@@ -157,6 +157,7 @@ impl ChipFrameFormat for SF32LB56FrameFormat {
 pub struct SF32LB56Tool {
     pub base: SifliToolBase,
     pub port: Box<dyn SerialPort>,
+    pub debug_sequence_replacement_supported: Option<bool>,
 }
 
 // 为 SF32LB56Tool 实现 Send 和 Sync
@@ -409,7 +410,11 @@ impl SifliTool for SF32LB56Tool {
         port.write_request_to_send(false).unwrap();
         std::thread::sleep(Duration::from_millis(100));
 
-        let mut tool = Box::new(Self { base, port });
+        let mut tool = Box::new(Self {
+            base,
+            port,
+            debug_sequence_replacement_supported: None,
+        });
         if tool.base.before.should_download_stub() {
             tool.download_stub().expect("Failed to download stub");
         }

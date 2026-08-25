@@ -1,3 +1,4 @@
+use crate::common::debug_sequence::DebugSequenceReplacementInfo;
 use crate::common::serial_io::SerialIo;
 use crate::{Error, Result};
 use std::str::FromStr;
@@ -49,6 +50,20 @@ pub const RESPONSE_STR_TABLE: [&str; 3] = ["OK", "Fail", "RX_WAIT"];
 pub trait RamCommand {
     fn command(&mut self, cmd: Command) -> Result<Response>;
     fn send_data(&mut self, data: &[u8]) -> Result<Response>;
+
+    /// Whether the connected RAM patch supports `burn_info`. The default keeps
+    /// legacy and non-Debug-IP chips on their existing raw write path.
+    fn supports_debug_sequence_replacement(&mut self) -> Result<bool> {
+        Ok(false)
+    }
+
+    fn send_debug_sequence_replacement_info(
+        &mut self,
+        _info: &DebugSequenceReplacementInfo,
+    ) -> Result<Response> {
+        Ok(Response::Fail)
+    }
+
     fn format_command(&self, cmd: &Command) -> String {
         cmd.to_string()
     }
@@ -87,6 +102,7 @@ pub fn is_sd_memory(memory_type: &str) -> bool {
 impl RamOps {
     const DEFAULT_TIMEOUT_MS: u128 = 4000;
     const ERASE_ALL_TIMEOUT_MS: u128 = 30 * 1000;
+    const REPLACEMENT_INFO_TIMEOUT_MS: u128 = 2000;
 
     /// 发送命令并等待响应的通用实现
     pub fn send_command_and_wait_response(
@@ -146,6 +162,28 @@ impl RamOps {
         }
 
         Self::wait_for_response(io, Self::DEFAULT_TIMEOUT_MS)
+    }
+
+    /// Sends the `burn_info` command followed by the fixed-size replacement
+    /// table expected by the new 52X/56X/57X RAM patches.
+    pub fn send_debug_sequence_replacement_info(
+        io: &mut SerialIo<'_>,
+        data: &[u8],
+        memory_type: &str,
+    ) -> Result<Response> {
+        tracing::debug!("sending burn_info replacement table ({} bytes)", data.len());
+        io.write_all(b"burn_info\r")?;
+        io.flush()?;
+        io.sleep(std::time::Duration::from_millis(100))?;
+        io.write_all(data)?;
+        io.flush()?;
+
+        let timeout = if is_sd_memory(memory_type) {
+            Self::REPLACEMENT_INFO_TIMEOUT_MS * 3
+        } else {
+            Self::REPLACEMENT_INFO_TIMEOUT_MS
+        };
+        Self::wait_for_response(io, timeout)
     }
 
     /// 等待响应的通用实现
