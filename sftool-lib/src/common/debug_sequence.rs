@@ -5,7 +5,7 @@ use std::io::{BufReader, Read, Seek, SeekFrom};
 pub const DEBUG_SEQUENCE: [u8; 8] = [0x41, 0x54, 0x53, 0x46, 0x33, 0x32, 0x05, 0x21];
 pub const REPLACEMENT_BYTE: u8 = 0xAA;
 pub const FLASH_WRITE_PAGE_SIZE: u64 = 128 * 1024;
-pub const REPLACE_MAX: usize = 100;
+pub const REPLACE_MAX: usize = 50;
 pub const REPLACE_HEADER1: u32 = 0xABAB_BABA;
 pub const REPLACE_HEADER2: u32 = 0x3535_5353;
 pub const REPLACE_INFO_SIZE: usize = 4 + 4 + REPLACE_MAX * 8 + 4;
@@ -131,8 +131,8 @@ mod tests {
         let encoded = info.encode().unwrap();
 
         assert!(info.is_empty());
-        assert_eq!(REPLACE_MAX, 100);
-        assert_eq!(encoded.len(), 812);
+        assert_eq!(REPLACE_MAX, 50);
+        assert_eq!(encoded.len(), 412);
         assert_eq!(encoded.len(), REPLACE_INFO_SIZE);
         assert_eq!(&encoded[0..4], &REPLACE_HEADER1.to_le_bytes());
         assert_eq!(&encoded[4..8], &0u32.to_le_bytes());
@@ -198,7 +198,7 @@ mod tests {
 
         assert_eq!(info.len(), REPLACE_MAX);
         assert_eq!(&encoded[4..8], &(REPLACE_MAX as u32).to_le_bytes());
-        assert_eq!(encoded.len(), 812);
+        assert_eq!(encoded.len(), 412);
     }
 
     #[test]
