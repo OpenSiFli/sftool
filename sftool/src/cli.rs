@@ -22,7 +22,10 @@ pub type MergedConfig = (
 pub enum Memory {
     #[clap(name = "nor")]
     Nor,
-    #[clap(name = "nor_type1")]
+    // `type1` is accepted as an alias: SiFli-SDK derives the memory from
+    // `JLINK_DEVICE` (e.g. `SF32LB58X_TYPE1`), which yields a bare `type1`
+    // for NOR Type1 boards.
+    #[clap(name = "nor_type1", alias = "type1")]
     NorType1,
     #[clap(name = "nand")]
     Nand,
@@ -236,11 +239,13 @@ fn memory_to_string(memory: &Memory) -> String {
 fn normalize_memory(memory: &str) -> Result<String> {
     let normalized = memory.to_ascii_lowercase();
     match normalized.as_str() {
+        // SiFli-SDK emits a bare `TYPE1` for NOR Type1 boards (`SF32LB58X_TYPE1`).
+        "type1" => Ok("nor_type1".to_string()),
         "nor" | "nor_type1" | "nand" | "nand_type1" | "nand_nobbm_type1" | "sd" | "sd_type1" => {
             Ok(normalized)
         }
         _ => bail!(
-            "Invalid memory type '{}'. Must be one of: nor, nor_type1, nand, nand_type1, nand_nobbm_type1, sd, sd_type1",
+            "Invalid memory type '{}'. Must be one of: nor, nor_type1 (alias: type1), nand, nand_type1, nand_nobbm_type1, sd, sd_type1",
             memory
         ),
     }
@@ -325,5 +330,36 @@ pub fn get_command_source(args: &Cli, config: Option<SfToolConfig>) -> Result<Co
             .ok_or_else(|| anyhow!("Config command requires a configuration file")),
         Some(cmd) => Ok(CommandSource::Cli(cmd.clone())),
         None => bail!("No command specified. Use a subcommand or `config <file>`."),
+    }
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::*;
+
+    #[test]
+    fn cli_accepts_bare_type1_as_nor_type1() {
+        for raw in ["type1", "TYPE1", "nor_type1", "NOR_TYPE1"] {
+            let cli = Cli::try_parse_from([
+                "sftool",
+                "-c",
+                "SF32LB58",
+                "-m",
+                raw,
+                "write_flash",
+                "a.bin@0x0",
+            ])
+            .unwrap_or_else(|e| panic!("-m {raw} rejected: {e}"));
+            let memory = cli.memory.expect("memory parsed");
+            assert_eq!(memory_to_string(&memory), "nor_type1", "-m {raw}");
+        }
+    }
+
+    #[test]
+    fn config_memory_type1_normalizes_to_nor_type1() {
+        assert_eq!(normalize_memory("TYPE1").unwrap(), "nor_type1");
+        assert_eq!(normalize_memory("type1").unwrap(), "nor_type1");
+        assert_eq!(normalize_memory("NAND").unwrap(), "nand");
+        assert!(normalize_memory("foo").is_err());
     }
 }

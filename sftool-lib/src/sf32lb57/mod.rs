@@ -21,6 +21,7 @@ use std::time::Duration;
 pub struct SF32LB57Tool {
     pub base: SifliToolBase,
     pub port: Box<dyn SerialPort>,
+    pub debug_sequence_replacement_supported: Option<bool>,
 }
 
 unsafe impl Send for SF32LB57Tool {}
@@ -225,7 +226,11 @@ impl SifliTool for SF32LB57Tool {
         port.write_request_to_send(false).unwrap();
         std::thread::sleep(Duration::from_millis(100));
 
-        let mut tool = Box::new(Self { base, port });
+        let mut tool = Box::new(Self {
+            base,
+            port,
+            debug_sequence_replacement_supported: None,
+        });
         if tool.base.before.should_download_stub() {
             tool.download_stub().expect("Failed to download stub");
         }

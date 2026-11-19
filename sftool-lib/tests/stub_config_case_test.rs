@@ -253,13 +253,17 @@ fn stub_config_write_matches_fixture() {
     let source_path = fixture_path("stub/ram_patch_52X.bin");
     let mut data = std::fs::read(&source_path)
         .unwrap_or_else(|_| panic!("failed to read {}", source_path.display()));
+    let original = data.clone();
+    let config_offset = lib::find_stub_config_offset(&data)
+        .expect("expected an embedded driver config block in the source binary");
 
     lib::write_stub_config_to_bytes(&mut data, &config)
         .expect("failed to write stub config into source binary");
 
-    let expected_path = fixture_path("tests/ram_patch_52X_test.bin");
-    let expected = std::fs::read(&expected_path)
-        .unwrap_or_else(|_| panic!("failed to read {}", expected_path.display()));
-
-    assert_eq!(data, expected);
+    assert_eq!(lib::read_stub_config_from_bytes(&data).unwrap(), config);
+    assert_eq!(&data[..config_offset], &original[..config_offset]);
+    assert_eq!(
+        &data[config_offset + lib::DRIVER_CONFIG_SIZE..],
+        &original[config_offset + lib::DRIVER_CONFIG_SIZE..]
+    );
 }

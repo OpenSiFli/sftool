@@ -72,11 +72,23 @@ impl SF32LB58Tool {
             data.len()
         );
 
+        let compat_mode = self.base.compat;
         {
             let mut io = for_tool(self);
-            io.write_all(header)?;
-            io.write_all(data)?;
-            io.flush()?;
+            if compat_mode {
+                let mut frame = Vec::with_capacity(header.len() + data.len());
+                frame.extend_from_slice(header);
+                frame.extend_from_slice(data);
+                for chunk in frame.chunks(256) {
+                    io.write_all(chunk)?;
+                    io.flush()?;
+                    io.sleep(Duration::from_millis(10))?;
+                }
+            } else {
+                io.write_all(header)?;
+                io.write_all(data)?;
+                io.flush()?;
+            }
         }
 
         if let Some(delay) = delay_ms {
