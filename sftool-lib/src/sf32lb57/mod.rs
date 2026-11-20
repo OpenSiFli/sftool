@@ -178,7 +178,13 @@ impl SF32LB57Tool {
 
         let packet_size = if self.base.compat { 256 } else { 64 * 1024 };
 
-        let mut addr = 0x2005_A000;
+        // Must match the link base of the embedded 57X stubs: NOR/NAND are
+        // linked at 0x2005_9000, SD at 0x2005_A000.
+        let mut addr = if crate::common::ram_command::is_sd_memory(&self.base.memory_type) {
+            0x2005_A000
+        } else {
+            0x2005_9000
+        };
         let mut data = &stub.data[..];
         while !data.is_empty() {
             let chunk = &data[..std::cmp::min(data.len(), packet_size)];
