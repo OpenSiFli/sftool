@@ -178,13 +178,13 @@ impl SF32LB57Tool {
 
         let packet_size = if self.base.compat { 256 } else { 64 * 1024 };
 
-        // Must match the link base of the embedded 57X stubs: NOR/NAND are
-        // linked at 0x2005_9000, SD at 0x2005_A000.
-        let mut addr = if crate::common::ram_command::is_sd_memory(&self.base.memory_type) {
-            0x2005_A000
-        } else {
-            0x2005_9000
-        };
+        // Load address = stub reset PC (vector table offset 4), page-aligned to 4 KiB.
+        let reset_pc = u32::from_le_bytes(
+            stub.data[4..8]
+                .try_into()
+                .expect("slice with exactly 4 bytes"),
+        );
+        let mut addr = reset_pc & 0xffff_f000;
         let mut data = &stub.data[..];
         while !data.is_empty() {
             let chunk = &data[..std::cmp::min(data.len(), packet_size)];
