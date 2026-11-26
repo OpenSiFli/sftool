@@ -144,6 +144,8 @@ pub struct SifliToolBase {
     pub cancel_token: CancelToken,
     /// 外部 stub 文件路径，如果指定则优先使用外部文件而非内嵌文件
     pub external_stub_path: Option<String>,
+    /// 为 true 时跳过 `burn_info` 握手，直接走兼容旧 Patch 的写入流程
+    pub skip_burn_info: bool,
 }
 
 impl SifliToolBase {
@@ -169,6 +171,7 @@ impl SifliToolBase {
             progress_helper,
             cancel_token: CancelToken::new(),
             external_stub_path: None,
+            skip_burn_info: false,
         }
     }
 
@@ -194,6 +197,7 @@ impl SifliToolBase {
             progress_helper,
             cancel_token: CancelToken::new(),
             external_stub_path: None,
+            skip_burn_info: false,
         }
     }
 
@@ -221,6 +225,7 @@ impl SifliToolBase {
             progress_helper,
             cancel_token: CancelToken::new(),
             external_stub_path,
+            skip_burn_info: false,
         }
     }
 
@@ -248,6 +253,7 @@ impl SifliToolBase {
             progress_helper,
             cancel_token,
             external_stub_path,
+            skip_burn_info: false,
         }
     }
 

@@ -10,7 +10,9 @@ mod serial;
 mod stub_config_spec;
 mod stub_ops;
 
-use cli::{Cli, CommandSource, Commands, StubAction, get_command_source, merge_config};
+use cli::{
+    Cli, CommandSource, Commands, MergedConfig, StubAction, get_command_source, merge_config,
+};
 use config::SfToolConfig;
 use config_exec::execute_config_command;
 use progress::create_progress_sink;
@@ -78,9 +80,10 @@ fn main() -> Result<()> {
     }
 
     // Merge CLI args with config file, CLI args take precedence
-    let (
-        chip_type,
-        memory_type,
+    let merged = merge_config(&args, config.clone()).context("Configuration error")?;
+    let MergedConfig {
+        chip: chip_type,
+        memory: memory_type,
         port,
         baud,
         before,
@@ -89,7 +92,8 @@ fn main() -> Result<()> {
         compat,
         quiet,
         stub_path,
-    ) = merge_config(&args, config.clone()).context("Configuration error")?;
+        no_burn_info,
+    } = merged;
 
     let (stub_path, _stub_temp) = prepare_stub_path(
         args.stub_config_json.as_deref(),
@@ -110,23 +114,23 @@ fn main() -> Result<()> {
     // Check if the specified serial port exists, exit early if not
     check_port_available(&port)?;
 
-    let mut siflitool = create_sifli_tool(
-        chip_type,
-        SifliToolBase::new_with_external_stub(
-            port.clone(),
-            before,
-            memory_type.to_lowercase(),
-            baud,
-            connect_attempts,
-            compat,
-            if quiet {
-                sftool_lib::progress::no_op_progress_sink()
-            } else {
-                create_progress_sink()
-            },
-            stub_path,
-        ),
+    let mut base = SifliToolBase::new_with_external_stub(
+        port.clone(),
+        before,
+        memory_type.to_lowercase(),
+        baud,
+        connect_attempts,
+        compat,
+        if quiet {
+            sftool_lib::progress::no_op_progress_sink()
+        } else {
+            create_progress_sink()
+        },
+        stub_path,
     );
+    base.skip_burn_info = no_burn_info;
+
+    let mut siflitool = create_sifli_tool(chip_type, base);
 
     if baud != 1000000 {
         siflitool

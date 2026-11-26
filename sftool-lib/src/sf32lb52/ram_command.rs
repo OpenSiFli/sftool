@@ -1,9 +1,9 @@
+use crate::Result;
 use crate::common::debug_sequence::DebugSequenceReplacementInfo;
 use crate::common::ram_command::{CommandConfig, RamOps, is_sd_memory};
 use crate::common::serial_io::{for_tool, sleep_with_cancel};
 use crate::common::sifli_debug::{SifliDebug, SifliUartCommand};
 use crate::sf32lb52::SF32LB52Tool;
-use crate::{Error, Result};
 
 // 重新导出公共类型，保持向后兼容
 pub use crate::common::ram_command::{Command, DownloadStub, RamCommand, Response};
@@ -30,20 +30,16 @@ impl RamCommand for SF32LB52Tool {
             return Ok(supported);
         }
 
-        let supported = match self
-            .send_debug_sequence_replacement_info(&DebugSequenceReplacementInfo::empty())
-        {
-            Ok(Response::Ok) => true,
-            Ok(response) => {
-                tracing::debug!(?response, "RAM patch does not support burn_info");
-                false
-            }
-            Err(Error::Cancelled) => return Err(Error::Cancelled),
-            Err(error) => {
-                tracing::debug!(%error, "RAM patch does not support burn_info");
-                false
-            }
-        };
+        let memory_type = self.base.memory_type.clone();
+        let skip_burn_info = self.base.skip_burn_info;
+        let mut io = for_tool(self);
+        let supported = RamOps::probe_debug_sequence_replacement_support(
+            &mut io,
+            memory_type.as_str(),
+            skip_burn_info,
+        )?;
+        drop(io);
+
         self.debug_sequence_replacement_supported = Some(supported);
         Ok(supported)
     }

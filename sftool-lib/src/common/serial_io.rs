@@ -120,6 +120,64 @@ impl<'a> SerialIo<'a> {
         self.check_cancelled()
     }
 
+    /// Reads and discards any bytes already sitting in the input buffer.
+    ///
+    /// This avoids `clear()`: on macOS the FTDI driver objects to it and can
+    /// truncate the next transfer. Reading until the line is quiet keeps the
+    /// port usable while still dropping stale data. `idle_timeout` is the
+    /// quiet period that ends the drain, and `max_duration` caps the total
+    /// time so a persistently chatty peer cannot stall us.
+    pub fn drain_input(&mut self, idle_timeout: Duration, max_duration: Duration) -> Result<()> {
+        let start = Instant::now();
+        let mut quiet_deadline = start + idle_timeout;
+        let mut scratch = [0u8; 256];
+        let mut discarded = 0usize;
+
+        loop {
+            self.check_cancelled()?;
+
+            if start.elapsed() >= max_duration {
+                break;
+            }
+
+            let pending = match self.port.bytes_to_read() {
+                Ok(pending) => pending,
+                Err(error) => {
+                    // Some platforms cannot report this; treat it as "nothing
+                    // pending" rather than failing the recovery path.
+                    tracing::debug!(%error, "byte availability unknown while draining input");
+                    break;
+                }
+            };
+
+            if pending == 0 {
+                if Instant::now() >= quiet_deadline {
+                    break;
+                }
+                self.sleep(IDLE_BACKOFF)?;
+                continue;
+            }
+
+            let len = (pending as usize).min(scratch.len());
+            match self.port.read(&mut scratch[..len]) {
+                Ok(0) => {}
+                Ok(read) => {
+                    discarded += read;
+                    quiet_deadline = Instant::now() + idle_timeout;
+                }
+                Err(error)
+                    if matches!(error.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) => {}
+                Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+                Err(error) => return Err(error.into()),
+            }
+        }
+
+        if discarded > 0 {
+            tracing::debug!("discarded {} stale byte(s) from serial input", discarded);
+        }
+        Ok(())
+    }
+
     pub fn set_baud_rate(&mut self, baud_rate: u32) -> Result<()> {
         self.check_cancelled()?;
         self.port.set_baud_rate(baud_rate)?;

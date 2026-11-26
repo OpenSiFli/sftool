@@ -5,18 +5,24 @@ use strum::{Display, EnumString};
 
 use crate::config::SfToolConfig;
 
-pub type MergedConfig = (
-    ChipType,
-    String,
-    String,
-    u32,
-    BeforeOperation,
-    AfterOperation,
-    i8,
-    bool,
-    bool,
-    Option<String>, // stub path
-);
+/// CLI arguments merged with the config file, CLI values taking precedence.
+///
+/// Named fields instead of a tuple: `compat`, `quiet` and `no_burn_info` are
+/// all bools, and a positional tuple made it far too easy to swap them.
+#[derive(Debug, Clone)]
+pub struct MergedConfig {
+    pub chip: ChipType,
+    pub memory: String,
+    pub port: String,
+    pub baud: u32,
+    pub before: BeforeOperation,
+    pub after: AfterOperation,
+    pub connect_attempts: i8,
+    pub compat: bool,
+    pub quiet: bool,
+    pub stub_path: Option<String>,
+    pub no_burn_info: bool,
+}
 
 #[derive(EnumString, Display, Debug, Clone, ValueEnum)]
 pub enum Memory {
@@ -73,6 +79,15 @@ pub struct Cli {
     /// Enable compatibility mode (default: false)
     #[arg(long = "compat")]
     pub compat: Option<bool>,
+
+    /// Skip the `burn_info` handshake and use the legacy write flow.
+    ///
+    /// Needed for RAM patches built without `burn_info` support (for example
+    /// a patch rebuilt for a Flash that is missing from the stock table).
+    /// Without this flag the probe still falls back automatically, but each
+    /// write pays a probe timeout first.
+    #[arg(long = "no-burn-info")]
+    pub no_burn_info: bool,
 
     /// External stub file path (overrides embedded stub)
     #[arg(long = "stub")]
@@ -296,12 +311,13 @@ pub fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<MergedCo
     let compat = args.compat.unwrap_or(base_config.compat);
     let quiet = args.quiet || base_config.quiet;
     let stub_path = args.stub.clone().or_else(|| base_config.stub_path.clone());
+    let no_burn_info = args.no_burn_info || base_config.no_burn_info;
     // 验证必需字段
     if port.is_empty() {
         bail!("Port must be specified either via --port or in config file");
     }
 
-    Ok((
+    Ok(MergedConfig {
         chip,
         memory,
         port,
@@ -312,7 +328,8 @@ pub fn merge_config(args: &Cli, config: Option<SfToolConfig>) -> Result<MergedCo
         compat,
         quiet,
         stub_path,
-    ))
+        no_burn_info,
+    })
 }
 
 /// Determine which command to execute from CLI args or config file

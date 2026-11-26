@@ -137,6 +137,9 @@ pub struct SfToolConfig {
     pub compat: bool,
     #[serde(default)]
     pub quiet: bool,
+    /// 跳过 `burn_info` 握手，强制使用兼容旧 Patch 的写入流程
+    #[serde(default)]
+    pub no_burn_info: bool,
     /// 外部 stub 文件路径，如果指定则优先使用外部文件而非内嵌文件
     #[serde(default)]
     pub stub_path: Option<String>,
@@ -189,6 +192,7 @@ impl SfToolConfig {
             connect_attempts: Defaults::CONNECT_ATTEMPTS,
             compat: Defaults::COMPAT,
             quiet: false,
+            no_burn_info: false,
             stub_path: None,
             write_flash: None,
             read_flash: None,

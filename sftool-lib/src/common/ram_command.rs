@@ -104,6 +104,11 @@ impl RamOps {
     const ERASE_ALL_TIMEOUT_MS: u128 = 30 * 1000;
     const REPLACEMENT_INFO_TIMEOUT_MS: u128 = 2000;
 
+    /// Quiet period that ends the drain after a failed `burn_info` probe.
+    const PROBE_RECOVERY_IDLE_MS: std::time::Duration = std::time::Duration::from_millis(100);
+    /// Upper bound on the drain, so a chatty peer cannot stall the recovery.
+    const PROBE_RECOVERY_MAX_MS: std::time::Duration = std::time::Duration::from_millis(1000);
+
     /// 发送命令并等待响应的通用实现
     pub fn send_command_and_wait_response(
         io: &mut SerialIo<'_>,
@@ -186,6 +191,72 @@ impl RamOps {
         Self::wait_for_response(io, timeout)
     }
 
+    /// Probes whether the connected RAM patch understands `burn_info`.
+    ///
+    /// A patch built without that command treats the probe as unknown shell
+    /// input: it echoes an error and then swallows the fixed-size replacement
+    /// table as text. The reply never matches a known response, so the probe
+    /// times out and those leftovers stay in the port, where they corrupt the
+    /// next command. Draining the input and re-syncing on the shell prompt
+    /// puts the port back into a usable state so the legacy write path can
+    /// still run. Returns `false` when the patch does not support it.
+    ///
+    /// When `skip_probe` is set the handshake is skipped entirely and the
+    /// legacy path is used without paying the probe timeout first. This is
+    /// what `--no-burn-info` sets for patches known to lack the command.
+    pub fn probe_debug_sequence_replacement_support(
+        io: &mut SerialIo<'_>,
+        memory_type: &str,
+        skip_probe: bool,
+    ) -> Result<bool> {
+        if skip_probe {
+            tracing::debug!("skipping burn_info probe by request; using the legacy write flow");
+            return Ok(false);
+        }
+
+        Self::send_debug_sequence_replacement_info(
+            io,
+            &DebugSequenceReplacementInfo::empty().encode()?,
+            memory_type,
+        )
+        .or_else(|error| {
+            if matches!(error, Error::Cancelled) {
+                return Err(error);
+            }
+
+            tracing::debug!(%error, "RAM patch does not support burn_info; restoring port state");
+
+            Self::recover_port_after_unsupported_probe(io, memory_type);
+            Ok(Response::Fail)
+        })
+        .map(|response| response == Response::Ok)
+    }
+
+    /// Clears whatever an unsupported `burn_info` probe left behind.
+    ///
+    /// This is best effort: the port may already be quiet, or the prompt may
+    /// have scrolled past before we started looking. Failing to re-sync must
+    /// not abort the write, because the legacy path still works as long as
+    /// the stale text is gone.
+    fn recover_port_after_unsupported_probe(io: &mut SerialIo<'_>, memory_type: &str) {
+        if let Err(error) =
+            io.drain_input(Self::PROBE_RECOVERY_IDLE_MS, Self::PROBE_RECOVERY_MAX_MS)
+        {
+            tracing::debug!(%error, "failed to drain serial input after burn_info probe");
+            return;
+        }
+
+        let (prompt, interval_ms, retries): (&[u8], u64, u32) = if is_sd_memory(memory_type) {
+            (b"sd0 OPEN success", 5000, 1)
+        } else {
+            (b"msh >", 200, 5)
+        };
+
+        if let Err(error) = Self::wait_for_shell_prompt(io, prompt, interval_ms, retries) {
+            tracing::debug!(%error, "shell prompt not seen after burn_info probe");
+        }
+    }
+
     /// 等待响应的通用实现
     fn wait_for_response(io: &mut SerialIo<'_>, timeout_ms: u128) -> Result<Response> {
         let matched = io.wait_for_patterns(
@@ -213,5 +284,85 @@ impl RamOps {
             std::time::Duration::from_millis(retry_interval_ms),
             max_retries,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::CancelToken;
+    use crate::common::serial_io::test_support::TestSerialPort;
+
+    /// A patch without `burn_info` echoes an error for the unknown command and
+    /// then emits the shell prompt. The probe must report "unsupported" and
+    /// leave the port drained, so the following command is not fed stale text.
+    #[test]
+    fn probe_reports_unsupported_and_drains_leftovers() {
+        let (mut port, state) =
+            TestSerialPort::from_bytes(b"burn_info: command not found\r\nmsh >");
+        let mut io = SerialIo::new(&mut port, CancelToken::new());
+
+        let supported = RamOps::probe_debug_sequence_replacement_support(&mut io, "nor", false)
+            .expect("probe should not fail when the patch merely lacks burn_info");
+
+        assert!(!supported);
+        assert_eq!(
+            state.lock().unwrap().read_data.len(),
+            0,
+            "stale bytes must not survive the recovery"
+        );
+        assert!(
+            state.lock().unwrap().writes.starts_with(b"burn_info\r"),
+            "the probe should still be attempted"
+        );
+    }
+
+    /// A patch that answers `OK` must be reported as supported and must not
+    /// trigger the recovery drain.
+    #[test]
+    fn probe_reports_supported_when_patch_answers_ok() {
+        let (mut port, state) = TestSerialPort::from_bytes(b"OK");
+        let mut io = SerialIo::new(&mut port, CancelToken::new());
+
+        let supported =
+            RamOps::probe_debug_sequence_replacement_support(&mut io, "nor", false).expect("probe");
+
+        assert!(supported);
+        assert_eq!(
+            state.lock().unwrap().clear_calls,
+            0,
+            "a successful probe should not have to clear the port"
+        );
+    }
+
+    /// `--no-burn-info` must bypass the handshake entirely: no bytes written,
+    /// no probe timeout paid, and the legacy write flow selected.
+    #[test]
+    fn probe_is_skipped_when_requested() {
+        let (mut port, state) = TestSerialPort::from_bytes(b"");
+        let mut io = SerialIo::new(&mut port, CancelToken::new());
+
+        let supported = RamOps::probe_debug_sequence_replacement_support(&mut io, "nor", true)
+            .expect("skipping the probe cannot fail");
+
+        assert!(!supported, "legacy flow must be selected");
+        assert!(
+            state.lock().unwrap().writes.is_empty(),
+            "nothing should be sent to the patch when the probe is skipped"
+        );
+    }
+
+    /// Cancellation during the probe must propagate instead of being swallowed
+    /// as "unsupported", otherwise a cancelled run would keep writing.
+    #[test]
+    fn probe_propagates_cancellation() {
+        let (mut port, _) = TestSerialPort::from_bytes(&[]);
+        let token = CancelToken::new();
+        token.cancel();
+        let mut io = SerialIo::new(&mut port, token);
+
+        let result = RamOps::probe_debug_sequence_replacement_support(&mut io, "nor", false);
+
+        assert!(matches!(result, Err(Error::Cancelled)));
     }
 }
